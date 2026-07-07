@@ -8,6 +8,7 @@ import {
   TicketRecord
 } from "@/lib/import/types";
 import { normalizeCsvRow, normalizeTicket, validateCsvColumns } from "@/lib/import/normalize";
+import { IMPORT_BUCKET } from "@/lib/storage";
 
 const UPSERT_CHUNK_SIZE = 500;
 const SELECT_CHUNK_SIZE = 500;
@@ -53,6 +54,29 @@ function areTimestampValuesEqual(left: string | null, right: string | null) {
 export async function processImportCsv(file: File): Promise<ImportSummary> {
   const filename = file.name || "import.csv";
   const text = await file.text();
+  return processImportCsvText(text, filename);
+}
+
+export async function processImportCsvFromStorage(input: {
+  path: string;
+  filename: string;
+}): Promise<ImportSummary> {
+  const supabase = createSupabaseAdminClient();
+  const downloadResult = await supabase.storage.from(IMPORT_BUCKET).download(input.path);
+
+  if (downloadResult.error || !downloadResult.data) {
+    throw new Error(`โหลดไฟล์นำเข้าจากพื้นที่เก็บไฟล์ไม่สำเร็จ: ${downloadResult.error?.message || "ไม่พบไฟล์"}`);
+  }
+
+  try {
+    const text = await downloadResult.data.text();
+    return await processImportCsvText(text, input.filename);
+  } finally {
+    await supabase.storage.from(IMPORT_BUCKET).remove([input.path]);
+  }
+}
+
+export async function processImportCsvText(text: string, filename: string): Promise<ImportSummary> {
   const parsed = Papa.parse<Record<string, string>>(text, {
     header: true,
     skipEmptyLines: "greedy"

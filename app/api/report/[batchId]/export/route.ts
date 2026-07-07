@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { buildReportDepartmentExcelFilename, buildReportDepartmentWorkbookBuffer } from "@/lib/report-excel";
 import { getReportDepartmentExportData } from "@/lib/report";
+import { REPORT_EXPORT_BUCKET, sanitizeStorageSegment, uploadBufferAndCreateSignedDownload } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,13 +40,14 @@ export async function GET(
 
   const buffer = await buildReportDepartmentWorkbookBuffer(exportData);
   const filename = buildReportDepartmentExcelFilename(exportData);
-
-  return new NextResponse(buffer, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "Cache-Control": "no-store"
-    }
+  const objectPath = `${params.batchId}/excel/${Date.now()}-${sanitizeStorageSegment(filename) || "report.xlsx"}`;
+  const signedUrl = await uploadBufferAndCreateSignedDownload({
+    bucket: REPORT_EXPORT_BUCKET,
+    path: objectPath,
+    buffer,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    filename
   });
+
+  return NextResponse.redirect(signedUrl);
 }

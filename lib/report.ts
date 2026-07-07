@@ -2,9 +2,13 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import {
+  createSignedUploadTarget,
+  REPORT_EVIDENCE_BUCKET,
+  sanitizeStorageSegment
+} from "@/lib/storage";
 import { buildClosedStatesFilter } from "@/lib/tickets";
 
-const REPORT_EVIDENCE_BUCKET = "report-evidence";
 const REPORT_EVIDENCE_ALLOWED_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -178,7 +182,8 @@ export type ReportDepartmentEvidenceDownloadData =
         evidence_file_url: string;
         evidence_uploaded_at: string | null;
       };
-      file: Blob;
+      filename: string;
+      signedUrl: string;
     };
 
 export type ReportBatchDepartmentEvidenceStatusData =
@@ -235,19 +240,12 @@ export type ReportDepartmentEvidenceDeleteData =
       };
     };
 
-function sanitizeStorageSegment(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
-}
-
 function normalizeReportArchiveStatus(value: string | undefined): ReportArchiveStatus {
   return value === "complete" || value === "pending" ? value : "all";
+}
+
+function sanitizeDownloadFilenameSegment(value: string) {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").replace(/\s+/g, " ").trim();
 }
 
 function normalizeReportArchiveSort(value: string | undefined): ReportArchiveSort {
@@ -600,23 +598,25 @@ export async function getReportDepartmentExportData(
   }
 }
 
-export async function uploadReportDepartmentEvidence(input: {
+export async function createReportDepartmentEvidenceUpload(input: {
   batchId: string;
   deptName: string;
-  file: File;
+  filename: string;
+  contentType: string;
+  size: number;
 }) {
   if (!hasSupabaseAdminEnv()) {
     return { status: "missing_env" } as const;
   }
 
-  if (!REPORT_EVIDENCE_ALLOWED_TYPES.has(input.file.type)) {
+  if (!REPORT_EVIDENCE_ALLOWED_TYPES.has(input.contentType)) {
     return {
       status: "invalid_file" as const,
       message: "รองรับเฉพาะไฟล์ JPG, PNG, WebP และ PDF"
     };
   }
 
-  if (input.file.size > REPORT_EVIDENCE_MAX_BYTES) {
+  if (!Number.isFinite(input.size) || input.size <= 0 || input.size > REPORT_EVIDENCE_MAX_BYTES) {
     return {
       status: "invalid_file" as const,
       message: "ไฟล์ต้องมีขนาดไม่เกิน 10 MB"
@@ -651,36 +651,109 @@ export async function uploadReportDepartmentEvidence(input: {
       return { status: "not_found" } as const;
     }
 
-    const fileExt = input.file.name.includes(".") ? input.file.name.split(".").pop()?.toLowerCase() || "" : "";
-    const safeFileName = sanitizeStorageSegment(input.file.name.replace(/\.[^.]+$/, "")) || "evidence";
+    const fileExt = input.filename.includes(".") ? input.filename.split(".").pop()?.toLowerCase() || "" : "";
+    const safeFileName = sanitizeStorageSegment(input.filename.replace(/\.[^.]+$/, "")) || "evidence";
     const objectPath = `${input.batchId}/${departmentResult.data.id}/${Date.now()}-${safeFileName}${fileExt ? `.${fileExt}` : ""}`;
-    const fileBuffer = Buffer.from(await input.file.arrayBuffer());
 
-    const uploadResult = await supabase.storage.from(REPORT_EVIDENCE_BUCKET).upload(objectPath, fileBuffer, {
-      contentType: input.file.type,
-      upsert: false
+    const uploadTarget = await createSignedUploadTarget({
+      bucket: REPORT_EVIDENCE_BUCKET,
+      path: objectPath,
+      fileSizeLimit: REPORT_EVIDENCE_MAX_BYTES,
+      allowedMimeTypes: [...REPORT_EVIDENCE_ALLOWED_TYPES]
     });
 
-    if (uploadResult.error) {
-      throw new Error(`อัปโหลดไฟล์หลักฐานไม่สำเร็จ: ${uploadResult.error.message}`);
+    return {
+      status: "ready" as const,
+      batch: batchResult.data as ReportBatchRow,
+      department: {
+        id: departmentResult.data.id,
+        dept_name: departmentResult.data.dept_name,
+        evidence_file_url: departmentResult.data.evidence_file_url,
+        evidence_uploaded_at: departmentResult.data.evidence_uploaded_at
+      },
+      upload: uploadTarget
+    };
+  } catch (error) {
+    return {
+      status: "unavailable" as const,
+      message: error instanceof Error ? error.message : "ระบบเตรียมอัปโหลดหลักฐานยังไม่พร้อมใช้งานชั่วคราว"
+    };
+  }
+}
+
+export async function attachReportDepartmentEvidence(input: {
+  batchId: string;
+  deptName: string;
+  objectPath: string;
+}) {
+  if (!hasSupabaseAdminEnv()) {
+    return { status: "missing_env" } as const;
+  }
+
+  if (!input.objectPath.startsWith(`${input.batchId}/`)) {
+    return {
+      status: "invalid_file" as const,
+      message: "ตำแหน่งไฟล์หลักฐานไม่ถูกต้อง"
+    };
+  }
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const [batchResult, departmentResult] = await Promise.all([
+      supabase.from("report_batches").select("id, report_date, created_at, note").eq("id", input.batchId).maybeSingle(),
+      supabase
+        .from("report_batch_departments")
+        .select("id, dept_name, evidence_file_url, evidence_uploaded_at")
+        .eq("report_batch_id", input.batchId)
+        .eq("dept_name", input.deptName)
+        .maybeSingle()
+    ]);
+
+    if (batchResult.error) {
+      throw new Error(`โหลดรอบรายงานสำหรับบันทึกหลักฐานไม่สำเร็จ: ${batchResult.error.message}`);
+    }
+
+    if (!batchResult.data) {
+      return { status: "not_found" } as const;
+    }
+
+    if (departmentResult.error) {
+      throw new Error(`โหลดฝ่ายสำหรับบันทึกหลักฐานไม่สำเร็จ: ${departmentResult.error.message}`);
+    }
+
+    if (!departmentResult.data) {
+      return { status: "not_found" } as const;
+    }
+
+    if (!input.objectPath.startsWith(`${input.batchId}/${departmentResult.data.id}/`)) {
+      return {
+        status: "invalid_file" as const,
+        message: "ไฟล์หลักฐานไม่ตรงกับฝ่ายที่เลือก"
+      };
+    }
+
+    const fileResult = await supabase.storage.from(REPORT_EVIDENCE_BUCKET).download(input.objectPath);
+
+    if (fileResult.error) {
+      throw new Error(`ตรวจสอบไฟล์หลักฐานไม่สำเร็จ: ${fileResult.error.message}`);
     }
 
     const uploadedAt = new Date().toISOString();
     const updateResult = await supabase
       .from("report_batch_departments")
       .update({
-        evidence_file_url: objectPath,
+        evidence_file_url: input.objectPath,
         evidence_uploaded_at: uploadedAt
       })
       .eq("report_batch_id", input.batchId)
       .eq("dept_name", input.deptName);
 
     if (updateResult.error) {
-      await supabase.storage.from(REPORT_EVIDENCE_BUCKET).remove([objectPath]);
+      await supabase.storage.from(REPORT_EVIDENCE_BUCKET).remove([input.objectPath]);
       throw new Error(`บันทึกข้อมูลหลักฐานไม่สำเร็จ: ${updateResult.error.message}`);
     }
 
-    if (departmentResult.data.evidence_file_url && departmentResult.data.evidence_file_url !== objectPath) {
+    if (departmentResult.data.evidence_file_url && departmentResult.data.evidence_file_url !== input.objectPath) {
       await supabase.storage.from(REPORT_EVIDENCE_BUCKET).remove([departmentResult.data.evidence_file_url]);
     }
 
@@ -690,7 +763,7 @@ export async function uploadReportDepartmentEvidence(input: {
       department: {
         id: departmentResult.data.id,
         dept_name: departmentResult.data.dept_name,
-        evidence_file_url: objectPath,
+        evidence_file_url: input.objectPath,
         evidence_uploaded_at: uploadedAt
       }
     };
@@ -884,7 +957,7 @@ export async function deleteReportDepartmentEvidence(
     const removeResult = await supabase.storage.from(REPORT_EVIDENCE_BUCKET).remove([oldObjectPath]);
 
     if (removeResult.error) {
-      throw new Error(`Evidence metadata was cleared but storage cleanup failed: ${removeResult.error.message}`);
+      throw new Error(`ล้างข้อมูลหลักฐานแล้ว แต่ลบไฟล์ในพื้นที่เก็บไฟล์ไม่สำเร็จ: ${removeResult.error.message}`);
     }
 
     return {
@@ -944,12 +1017,20 @@ export async function getReportDepartmentEvidenceDownloadData(
       return { status: "no_file" };
     }
 
+    const originalExt = departmentResult.data.evidence_file_url.includes(".")
+      ? `.${departmentResult.data.evidence_file_url.split(".").pop()}`
+      : "";
+    const filename = `evidence-${batchResult.data.report_date}-${sanitizeDownloadFilenameSegment(
+      departmentResult.data.dept_name
+    )}${originalExt}`;
     const downloadResult = await supabase.storage
       .from(REPORT_EVIDENCE_BUCKET)
-      .download(departmentResult.data.evidence_file_url);
+      .createSignedUrl(departmentResult.data.evidence_file_url, 10 * 60, {
+        download: filename
+      });
 
-    if (downloadResult.error) {
-      throw new Error(`ดาวน์โหลดไฟล์หลักฐานไม่สำเร็จ: ${downloadResult.error.message}`);
+    if (downloadResult.error || !downloadResult.data?.signedUrl) {
+      throw new Error(`สร้างลิงก์ดาวน์โหลดหลักฐานไม่สำเร็จ: ${downloadResult.error?.message || "ไม่ทราบสาเหตุ"}`);
     }
 
     return {
@@ -960,7 +1041,8 @@ export async function getReportDepartmentEvidenceDownloadData(
         evidence_file_url: departmentResult.data.evidence_file_url,
         evidence_uploaded_at: departmentResult.data.evidence_uploaded_at
       },
-      file: downloadResult.data
+      filename,
+      signedUrl: downloadResult.data.signedUrl
     };
   } catch (error) {
     return {

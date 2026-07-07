@@ -1,5 +1,6 @@
 "use client";
 
+import { createClient } from "@supabase/supabase-js";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 
@@ -15,11 +16,92 @@ type EvidenceUploadFormProps = {
   }) => void;
 };
 
+type EvidenceUploadTarget = {
+  bucket: string;
+  path: string;
+  token: string;
+  supabaseUrl: string;
+  anonKey: string;
+};
+
 export function EvidenceUploadForm({ batchId, deptName, hasEvidence, onUploaded }: EvidenceUploadFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  async function requestUploadTarget(file: File) {
+    const response = await fetch(`/api/report/${batchId}/evidence`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "create-upload",
+        dept: deptName,
+        filename: file.name,
+        contentType: file.type,
+        size: file.size
+      })
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          error?: string;
+          upload?: EvidenceUploadTarget;
+        }
+      | null;
+
+    if (!response.ok || !payload?.upload) {
+      throw new Error(payload?.error || "เตรียมสิทธิ์อัปโหลดหลักฐานไม่สำเร็จ");
+    }
+
+    return payload.upload;
+  }
+
+  async function uploadEvidenceFile(file: File, target: EvidenceUploadTarget) {
+    const supabase = createClient(target.supabaseUrl, target.anonKey);
+    const uploadResult = await supabase.storage.from(target.bucket).uploadToSignedUrl(target.path, target.token, file, {
+      contentType: file.type
+    });
+
+    if (uploadResult.error) {
+      throw new Error(`อัปโหลดไฟล์หลักฐานไม่สำเร็จ: ${uploadResult.error.message}`);
+    }
+  }
+
+  async function completeEvidenceUpload(target: EvidenceUploadTarget) {
+    const response = await fetch(`/api/report/${batchId}/evidence`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "complete-upload",
+        dept: deptName,
+        path: target.path
+      })
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          error?: string;
+          department?: {
+            id: string;
+            dept_name: string;
+            evidence_file_url: string;
+            evidence_uploaded_at: string;
+          };
+        }
+      | null;
+
+    if (!response.ok || !payload?.department) {
+      throw new Error(payload?.error || "บันทึกสถานะหลักฐานไม่สำเร็จ");
+    }
+
+    return payload.department;
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,38 +116,21 @@ export function EvidenceUploadForm({ batchId, deptName, hasEvidence, onUploaded 
     }
 
     setIsUploading(true);
+    setUploadProgress(15);
 
     try {
-      const response = await fetch(`/api/report/${batchId}/evidence`, {
-        method: "POST",
-        body: formData
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            error?: string;
-            department?: {
-              id: string;
-              dept_name: string;
-              evidence_file_url: string;
-              evidence_uploaded_at: string;
-            };
-          }
-        | null;
-
-      if (!response.ok) {
-        setErrorMessage(payload?.error || "อัปโหลดหลักฐานไม่สำเร็จ");
-        return;
-      }
-
-      if (!payload?.department) {
-        setErrorMessage("อัปโหลดแล้ว แต่ระบบไม่ได้ส่งสถานะหลักฐานกลับมา");
-        return;
-      }
+      const uploadTarget = await requestUploadTarget(file);
+      setUploadProgress(40);
+      await uploadEvidenceFile(file, uploadTarget);
+      setUploadProgress(82);
+      const department = await completeEvidenceUpload(uploadTarget);
 
       formRef.current?.reset();
+      setUploadProgress(100);
       setSuccessMessage(hasEvidence ? "อัปเดตไฟล์หลักฐานแล้ว" : "อัปโหลดหลักฐานแล้ว");
-      onUploaded(payload.department);
+      onUploaded(department);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "อัปโหลดหลักฐานไม่สำเร็จ");
     } finally {
       setIsUploading(false);
     }
@@ -95,6 +160,11 @@ export function EvidenceUploadForm({ batchId, deptName, hasEvidence, onUploaded 
         </button>
         <span className="text-xs text-muted">รองรับ JPG, PNG, WebP, PDF ไม่เกิน 10 MB</span>
       </div>
+      {isUploading ? (
+        <div className="rounded-full bg-surface-strong" role="status" aria-label={`ความคืบหน้าอัปโหลด ${uploadProgress}%`}>
+          <div className="h-2 rounded-full bg-brand transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+        </div>
+      ) : null}
       {errorMessage ? <p className="text-xs font-medium text-danger">{errorMessage}</p> : null}
       {successMessage ? <p className="text-xs font-medium text-success">{successMessage}</p> : null}
     </form>

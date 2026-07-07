@@ -1,5 +1,6 @@
 "use client";
 
+import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { DragEvent, useMemo, useRef, useState } from "react";
 
@@ -14,6 +15,14 @@ type ImportResult = {
 
 type RequestState = "idle" | "uploading" | "success" | "error";
 type ImportStage = "idle" | "preparing" | "uploading" | "processing" | "finishing" | "success" | "error";
+
+type ImportUploadTarget = {
+  bucket: string;
+  path: string;
+  token: string;
+  supabaseUrl: string;
+  anonKey: string;
+};
 
 function formatStateLabel(state: RequestState) {
   switch (state) {
@@ -32,7 +41,7 @@ function formatStageLabel(stage: ImportStage) {
   const labels: Record<ImportStage, string> = {
     idle: "รอเลือกไฟล์",
     preparing: "เตรียมไฟล์และตรวจรูปแบบเบื้องต้น",
-    uploading: "กำลังส่งไฟล์ขึ้นระบบ",
+    uploading: "กำลังส่งไฟล์ขึ้นพื้นที่เก็บไฟล์ชั่วคราว",
     processing: "กำลังอ่านไฟล์ CSV ตรวจรายการเปลี่ยนแปลง และบันทึกลงฐานข้อมูล",
     finishing: "กำลังสรุปผลการนำเข้า",
     success: "นำเข้าข้อมูลสำเร็จ",
@@ -65,6 +74,39 @@ export function ImportClient() {
     setImportProgress(file ? 8 : 0);
     setErrorMessage(null);
     setResult(null);
+  }
+
+  async function requestUploadTarget(file: File) {
+    const response = await fetch("/api/import/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type || "text/csv",
+        size: file.size
+      })
+    });
+
+    const payload = (await response.json()) as ImportUploadTarget & { error?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.error || "เตรียมสิทธิ์อัปโหลดไฟล์ไม่สำเร็จ");
+    }
+
+    return payload;
+  }
+
+  async function uploadFileToStorage(file: File, target: ImportUploadTarget) {
+    const supabase = createClient(target.supabaseUrl, target.anonKey);
+    const uploadResult = await supabase.storage.from(target.bucket).uploadToSignedUrl(target.path, target.token, file, {
+      contentType: file.type || "text/csv"
+    });
+
+    if (uploadResult.error) {
+      throw new Error(`อัปโหลดไฟล์ไปพื้นที่เก็บไฟล์ไม่สำเร็จ: ${uploadResult.error.message}`);
+    }
   }
 
   function stopProgressTimer() {
@@ -111,20 +153,31 @@ export function ImportClient() {
     }
 
     setRequestState("uploading");
-    setImportStage("uploading");
-    setImportProgress(18);
+    setImportStage("preparing");
+    setImportProgress(12);
     setErrorMessage(null);
     setResult(null);
 
-    const formData = new FormData();
-    formData.set("file", selectedFile);
-
-    startProcessingProgress();
-
     try {
+      const uploadTarget = await requestUploadTarget(selectedFile);
+
+      setImportStage("uploading");
+      setImportProgress(28);
+      await uploadFileToStorage(selectedFile, uploadTarget);
+
+      setImportStage("processing");
+      setImportProgress(46);
+      startProcessingProgress();
+
       const response = await fetch("/api/import", {
         method: "POST",
-        body: formData
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          path: uploadTarget.path,
+          filename: selectedFile.name
+        })
       });
 
       setImportStage("finishing");
@@ -190,7 +243,7 @@ export function ImportClient() {
             </span>
             <h3 className="mt-4 text-2xl font-semibold tracking-[-0.02em] text-ink">ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์</h3>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
-              รองรับไฟล์ CSV จาก CityData รูปแบบ 15 คอลัมน์ตามตัวอย่างใน workspace
+              รองรับไฟล์ CSV จาก CityData รูปแบบ 15 คอลัมน์ ระบบจะพักไฟล์ไว้ในพื้นที่เก็บไฟล์ชั่วคราวก่อนประมวลผลเพื่อลดปัญหาไฟล์ใหญ่
             </p>
             <p className="mt-6 text-sm font-semibold text-ink">
               {selectedFile ? `ไฟล์ที่เลือก: ${selectedFile.name}` : "ยังไม่ได้เลือกไฟล์"}

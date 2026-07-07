@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { buildReportDepartmentExcelFilename, buildReportDepartmentWorkbookBuffer } from "@/lib/report-excel";
 import { getReportBatchDepartmentEvidenceStatuses, getReportDepartmentExportData } from "@/lib/report";
+import { REPORT_EXPORT_BUCKET, sanitizeStorageSegment, uploadBufferAndCreateSignedDownload } from "@/lib/storage";
 import { createZipBuffer } from "@/lib/zip";
 
 export const runtime = "nodejs";
@@ -80,13 +81,14 @@ export async function GET(
   const firstReadyExport = exportEntries.find((result) => result.exportData.status === "ready")?.exportData;
   const fileDate = firstReadyExport?.status === "ready" ? firstReadyExport.batch.report_date : params.batchId;
   const filename = `report-${fileDate}-all-departments.zip`;
-
-  return new NextResponse(zipBuffer, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "Cache-Control": "no-store"
-    }
+  const objectPath = `${params.batchId}/zip/${Date.now()}-${sanitizeStorageSegment(filename) || "reports.zip"}`;
+  const signedUrl = await uploadBufferAndCreateSignedDownload({
+    bucket: REPORT_EXPORT_BUCKET,
+    path: objectPath,
+    buffer: zipBuffer,
+    contentType: "application/zip",
+    filename
   });
+
+  return NextResponse.redirect(signedUrl);
 }

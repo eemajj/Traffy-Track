@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { buildReportDepartmentPdfBuffer, buildReportDepartmentPdfFilename } from "@/lib/report-pdf";
 import { getReportDepartmentExportData } from "@/lib/report";
+import { REPORT_EXPORT_BUCKET, sanitizeStorageSegment, uploadBufferAndCreateSignedDownload } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,13 +40,14 @@ export async function GET(
 
   const buffer = await buildReportDepartmentPdfBuffer(exportData);
   const filename = buildReportDepartmentPdfFilename(exportData);
-
-  return new NextResponse(new Uint8Array(buffer), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "Cache-Control": "no-store"
-    }
+  const objectPath = `${params.batchId}/pdf/${Date.now()}-${sanitizeStorageSegment(filename) || "report.pdf"}`;
+  const signedUrl = await uploadBufferAndCreateSignedDownload({
+    bucket: REPORT_EXPORT_BUCKET,
+    path: objectPath,
+    buffer: new Uint8Array(buffer),
+    contentType: "application/pdf",
+    filename
   });
+
+  return NextResponse.redirect(signedUrl);
 }
