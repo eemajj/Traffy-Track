@@ -59,11 +59,12 @@ function formatDateTime(value: string | null) {
 
 function getThaiFontPath() {
   const candidates = [
-    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.woff"),
+    path.join(process.cwd(), "public", "fonts", "tahoma.ttf"),
+    path.join(process.cwd(), "public", "fonts", "Tahoma.ttf"),
     path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.ttf"),
+    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.woff"),
     "/System/Library/Fonts/Supplemental/Tahoma.ttf",
-    "/Library/Fonts/Tahoma.ttf",
-    path.join(process.cwd(), "public", "fonts", "Tahoma.ttf")
+    "/Library/Fonts/Tahoma.ttf"
   ];
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
@@ -71,11 +72,12 @@ function getThaiFontPath() {
 
 function getThaiBoldFontPath() {
   const candidates = [
-    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.woff"),
+    path.join(process.cwd(), "public", "fonts", "tahomabd.ttf"),
+    path.join(process.cwd(), "public", "fonts", "Tahoma Bold.ttf"),
     path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.ttf"),
+    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.woff"),
     "/System/Library/Fonts/Supplemental/Tahoma Bold.ttf",
-    "/Library/Fonts/Tahoma Bold.ttf",
-    path.join(process.cwd(), "public", "fonts", "Tahoma Bold.ttf")
+    "/Library/Fonts/Tahoma Bold.ttf"
   ];
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || getThaiFontPath();

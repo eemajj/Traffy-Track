@@ -2,6 +2,7 @@
 
 ## Current Status
 - Import, Report, Evidence upload, และ Dashboard ใช้งานกับข้อมูลจริงได้แล้ว
+- แก้ไขปัญหาภาษาไทยแสดงผลเพี้ยนใน PDF โดยเปลี่ยนไปใช้ฟอนต์ Tahoma (tahoma.ttf และ tahomabd.ttf) ในเครื่องของระบบเข้า public/fonts
 - Dashboard ล่าสุดแก้ให้แสดงเคสรอจัดฝ่ายรับผิดชอบและรายการเปลี่ยนสำคัญถูกต้องแล้ว
 - QA รอบ 2026-07-07 ผ่านสำหรับ health, auth guard, report summary, export Excel, export-all zip, evidence upload/download/delete, และหน้า SSR หลัก
 - เพิ่มหน้า `Cases` สำหรับดูทะเบียนเคส, กรองเคส, ดูเคสที่เปลี่ยนสถานะรอบล่าสุด, และดู timeline รายเคสแล้ว
@@ -12,6 +13,8 @@
 - Server ล่าสุดเปิดไว้ที่ `http://127.0.0.1:3000` ถ้าพรุ่งนี้เข้าไม่ได้ให้ restart ใหม่
 
 ## Done
+- นำเข้าฟอนต์ Tahoma (tahoma.ttf) จาก Desktop และคัดลอก Tahoma Bold (tahomabd.ttf) จากระบบมาไว้ใน `public/fonts` เพื่อความสมบูรณ์ในการสร้าง PDF บน local และ server
+- ปรับปรุง `lib/report-pdf.ts` ให้จัดลำดับการโหลดฟอนต์มาใช้ Tahoma (.ttf) ตัวใหม่เป็นอันดับแรกสุด ป้องกันปัญหาการอ่านไฟล์ .woff และสระเพี้ยนใน PDFKit
 - อ่าน requirement หลักจาก `Requirement/requirement.md`
 - สรุป business rules, routes, data model, import flow, report flow, และ evidence upload flow
 - สร้าง memory files สำหรับเก็บบริบทและความคืบหน้าของโปรเจกต์
