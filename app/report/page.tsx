@@ -1,8 +1,9 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { createReportBatchAction } from "@/app/report/actions";
+import { createReportBatchAction, deleteReportBatchAction, updateReportBatchAction } from "@/app/report/actions";
 import { CreateReportSubmitButton } from "@/app/report/create-report-submit-button";
+import { ReportBatchSubmitButton } from "@/app/report/report-batch-submit-button";
 import { getReportPageData } from "@/lib/report";
 
 export const dynamic = "force-dynamic";
@@ -186,6 +187,16 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                   ยังส่งหลักฐานไม่ครบ
                 </Link>
                 <Link
+                  href={buildReportHref({ status: "complete", sort: "report_date_desc" })}
+                  className={
+                    data.filters.status === "complete"
+                      ? "rounded-2xl bg-success px-4 py-2 text-sm font-semibold text-white"
+                      : "rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-success/40 hover:bg-white hover:text-success"
+                  }
+                >
+                  รายงานครบถ้วน
+                </Link>
+                <Link
                   href={buildReportHref({ from: currentMonth.start, to: currentMonth.end, sort: data.filters.sort })}
                   className={
                     data.filters.from === currentMonth.start && data.filters.to === currentMonth.end
@@ -270,7 +281,18 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                     <article key={batch.id} className="rounded-3xl border border-border bg-surface/55 p-5">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2">
-                          <p className="text-sm font-semibold text-brand">{formatDate(batch.report_date)}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-brand">{formatDate(batch.report_date)}</p>
+                            <span
+                              className={
+                                batch.completionStatus === "complete"
+                                  ? "rounded-full border border-success/25 bg-success/10 px-3 py-1 text-xs font-semibold text-success"
+                                  : "rounded-full border border-danger/25 bg-danger/10 px-3 py-1 text-xs font-semibold text-danger"
+                              }
+                            >
+                              {batch.completionStatus === "complete" ? "รายงานครบถ้วน" : "ยังไม่ครบถ้วน"}
+                            </span>
+                          </div>
                           <h3 className="text-lg font-semibold tracking-[-0.01em] text-ink">
                             รอบรายงานวันที่ {formatDate(batch.report_date)}
                           </h3>
@@ -312,6 +334,53 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                           </p>
                         </div>
                       </div>
+
+                      <details className="mt-4 rounded-2xl border border-border bg-white">
+                        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink marker:hidden">
+                          จัดการรอบนี้
+                        </summary>
+                        <div className="border-t border-border px-4 py-4">
+                          <form action={updateReportBatchAction} className="grid gap-3 lg:grid-cols-[1fr_1.6fr_auto]">
+                            <input type="hidden" name="batch_id" value={batch.id} />
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-muted">วันที่รอบรายงาน</span>
+                              <input
+                                type="date"
+                                name="report_date"
+                                defaultValue={batch.report_date}
+                                required
+                                className="min-h-12 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
+                              />
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-muted">หมายเหตุ</span>
+                              <input
+                                type="text"
+                                name="note"
+                                defaultValue={batch.note || ""}
+                                placeholder="เช่น รอบติดตามกลางเดือน"
+                                className="min-h-12 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
+                              />
+                            </label>
+                            <div className="self-end">
+                              <ReportBatchSubmitButton idleLabel="บันทึก" pendingLabel="กำลังบันทึก..." />
+                            </div>
+                          </form>
+
+                          <form action={deleteReportBatchAction} className="mt-4 flex flex-col gap-3 rounded-2xl bg-danger/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <input type="hidden" name="batch_id" value={batch.id} />
+                            <p className="text-sm leading-6 text-danger">
+                              ลบรอบนี้จะลบรายการฝ่าย รายการเรื่อง และไฟล์หลักฐานที่แนบกับรอบนี้
+                            </p>
+                            <ReportBatchSubmitButton
+                              idleLabel="ลบรอบรายงาน"
+                              pendingLabel="กำลังลบ..."
+                              variant="danger"
+                              confirmMessage={`ยืนยันลบรอบรายงานวันที่ ${formatDate(batch.report_date)} ใช่หรือไม่`}
+                            />
+                          </form>
+                        </div>
+                      </details>
                     </article>
                   ))
                 )}

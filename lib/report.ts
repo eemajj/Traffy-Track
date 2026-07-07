@@ -107,6 +107,7 @@ export type ReportPageData =
         evidenceUploadedCount: number;
         evidencePendingCount: number;
         evidenceProgressPercent: number;
+        completionStatus: "complete" | "incomplete";
       }>;
       filters: {
         status: ReportArchiveStatus;
@@ -367,6 +368,9 @@ export async function getReportPageData(filters: ReportPageFilters = {}): Promis
         const evidenceProgressPercent =
           batchDepartments.length > 0 ? Math.round((evidenceUploadedCount / batchDepartments.length) * 100) : 0;
 
+        const completionStatus: "complete" | "incomplete" =
+          batchDepartments.length > 0 && evidencePendingCount === 0 ? "complete" : "incomplete";
+
         return {
           id: batch.id,
           report_date: batch.report_date,
@@ -376,7 +380,8 @@ export async function getReportPageData(filters: ReportPageFilters = {}): Promis
           itemCount: batchItems.length,
           evidenceUploadedCount,
           evidencePendingCount,
-          evidenceProgressPercent
+          evidenceProgressPercent,
+          completionStatus
         };
       })
         .filter((batch) => {
@@ -1132,6 +1137,85 @@ export async function createReportBatch(input: { reportDate: string; note: strin
   if (itemsInsertResult.error) {
     await cleanupBatch();
     throw new Error(`สร้างรายการเรื่องในรอบรายงานไม่สำเร็จ: ${itemsInsertResult.error.message}`);
+  }
+
+  return { batchId };
+}
+
+export async function updateReportBatch(input: {
+  batchId: string;
+  reportDate: string;
+  note: string | null;
+}) {
+  if (!hasSupabaseAdminEnv()) {
+    throw new Error("ระบบยังไม่ได้ตั้งค่า Supabase");
+  }
+
+  if (!input.batchId) {
+    throw new Error("ไม่พบรหัสรอบรายงานที่ต้องการแก้ไข");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.reportDate)) {
+    throw new Error("กรุณาระบุวันที่รอบรายงานให้ถูกต้อง");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const updateResult = await supabase
+    .from("report_batches")
+    .update({
+      report_date: input.reportDate,
+      note: input.note
+    })
+    .eq("id", input.batchId)
+    .select("id")
+    .maybeSingle();
+
+  if (updateResult.error) {
+    throw new Error(`แก้ไขรอบรายงานไม่สำเร็จ: ${updateResult.error.message}`);
+  }
+
+  if (!updateResult.data) {
+    throw new Error("ไม่พบรอบรายงานที่ต้องการแก้ไข");
+  }
+
+  return { batchId: updateResult.data.id as string };
+}
+
+export async function deleteReportBatch(batchId: string) {
+  if (!hasSupabaseAdminEnv()) {
+    throw new Error("ระบบยังไม่ได้ตั้งค่า Supabase");
+  }
+
+  if (!batchId) {
+    throw new Error("ไม่พบรหัสรอบรายงานที่ต้องการลบ");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const departmentsResult = await supabase
+    .from("report_batch_departments")
+    .select("evidence_file_url")
+    .eq("report_batch_id", batchId);
+
+  if (departmentsResult.error) {
+    throw new Error(`โหลดข้อมูลหลักฐานก่อนลบรอบรายงานไม่สำเร็จ: ${departmentsResult.error.message}`);
+  }
+
+  const evidencePaths = ((departmentsResult.data as Array<{ evidence_file_url: string | null }> | null) || [])
+    .map((department) => department.evidence_file_url)
+    .filter((path): path is string => Boolean(path));
+
+  if (evidencePaths.length > 0) {
+    const removeResult = await supabase.storage.from(REPORT_EVIDENCE_BUCKET).remove(evidencePaths);
+
+    if (removeResult.error) {
+      throw new Error(`ลบไฟล์หลักฐานของรอบรายงานไม่สำเร็จ: ${removeResult.error.message}`);
+    }
+  }
+
+  const deleteResult = await supabase.from("report_batches").delete().eq("id", batchId);
+
+  if (deleteResult.error) {
+    throw new Error(`ลบรอบรายงานไม่สำเร็จ: ${deleteResult.error.message}`);
   }
 
   return { batchId };
