@@ -59,6 +59,8 @@ function formatDateTime(value: string | null) {
 
 function getThaiFontPath() {
   const candidates = [
+    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.woff"),
+    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.ttf"),
     "/System/Library/Fonts/Supplemental/Tahoma.ttf",
     "/Library/Fonts/Tahoma.ttf",
     path.join(process.cwd(), "public", "fonts", "Tahoma.ttf")
@@ -69,6 +71,8 @@ function getThaiFontPath() {
 
 function getThaiBoldFontPath() {
   const candidates = [
+    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.woff"),
+    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.ttf"),
     "/System/Library/Fonts/Supplemental/Tahoma Bold.ttf",
     "/Library/Fonts/Tahoma Bold.ttf",
     path.join(process.cwd(), "public", "fonts", "Tahoma Bold.ttf")
