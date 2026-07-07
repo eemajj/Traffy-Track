@@ -22,3 +22,5 @@ supabase/.temp
 .gemini
 .agents
 .impeccable
+.vercel
+.env*
