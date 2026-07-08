@@ -15,6 +15,8 @@ type ImportResult = {
   unchangedTickets: number;
   changedFields: number;
   importBatchId: string;
+  status?: "queued" | "running" | "completed" | "failed";
+  errorMessage?: string | null;
 };
 
 type RequestState = "idle" | "uploading" | "success" | "error";
@@ -53,6 +55,10 @@ function formatStageLabel(stage: ImportStage) {
   };
 
   return labels[stage];
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function ImportClient() {
@@ -111,6 +117,37 @@ export function ImportClient() {
     if (uploadResult.error) {
       throw new Error(`อัปโหลดไฟล์ไปพื้นที่เก็บไฟล์ไม่สำเร็จ: ${uploadResult.error.message}`);
     }
+  }
+
+  async function pollImportJob(importBatchId: string) {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      await wait(2000);
+
+      const response = await fetch(`/api/import/${importBatchId}`, {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-store"
+        }
+      });
+      const payload = (await response.json()) as ImportResult & { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "โหลดสถานะรอบนำเข้าไม่สำเร็จ");
+      }
+
+      if (payload.status === "failed") {
+        throw new Error(payload.errorMessage || "นำเข้าข้อมูลไม่สำเร็จ");
+      }
+
+      if (payload.status === "completed") {
+        return payload;
+      }
+
+      setImportStage("processing");
+      setImportProgress((currentProgress) => Math.min(Math.max(currentProgress, 62) + 1, 94));
+    }
+
+    throw new Error("นำเข้าข้อมูลใช้เวลานานเกินไป กรุณาตรวจสถานะล่าสุดที่หน้า Dashboard หรือทดลองใหม่ภายหลัง");
   }
 
   function stopProgressTimer() {
@@ -185,7 +222,7 @@ export function ImportClient() {
       });
 
       setImportStage("finishing");
-      setImportProgress(96);
+      setImportProgress(62);
 
       const payload = (await response.json()) as ImportResult & { error?: string };
 
@@ -197,10 +234,12 @@ export function ImportClient() {
         return;
       }
 
+      const completedPayload = payload.status === "completed" ? payload : await pollImportJob(payload.importBatchId);
+
       setRequestState("success");
       setImportStage("success");
       setImportProgress(100);
-      setResult(payload);
+      setResult(completedPayload);
     } catch (error) {
       setRequestState("error");
       setImportStage("error");

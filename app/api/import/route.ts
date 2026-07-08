@@ -1,11 +1,32 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { waitUntil } from "@vercel/functions";
 
 import { requireApiSession } from "@/lib/api-auth";
-import { processImportCsv, processImportCsvFromStorage } from "@/lib/import/process";
+import { createQueuedImportBatch, processImportCsv, processImportCsvFromStorage } from "@/lib/import/process";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function runImportJob(input: {
+  path: string;
+  filename: string;
+  importBatchId: string;
+}) {
+  try {
+    await processImportCsvFromStorage(input);
+    revalidatePath("/dashboard");
+    revalidatePath("/report");
+    revalidatePath("/cases");
+  } catch (error) {
+    console.error("Background import job failed", {
+      importBatchId: input.importBatchId,
+      filename: input.filename,
+      message: error instanceof Error ? error.message : "นำเข้าข้อมูลไม่สำเร็จโดยไม่ทราบสาเหตุ",
+      stack: error instanceof Error ? error.stack : undefined
+    });
+  }
+}
 
 export async function POST(request: Request) {
   const unauthorized = await requireApiSession();
@@ -30,16 +51,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "ตำแหน่งไฟล์นำเข้าไม่ถูกต้อง" }, { status: 400 });
       }
 
-      const summary = await processImportCsvFromStorage({
-        path: payload.path,
+      const job = await createQueuedImportBatch({
         filename: payload.filename
       });
 
-      revalidatePath("/dashboard");
-      revalidatePath("/report");
-      revalidatePath("/cases");
+      waitUntil(
+        runImportJob({
+          path: payload.path,
+          filename: payload.filename,
+          importBatchId: job.importBatchId
+        })
+      );
 
-      return NextResponse.json(summary, {
+      return NextResponse.json(job, {
+        status: 202,
         headers: {
           "Cache-Control": "no-store"
         }

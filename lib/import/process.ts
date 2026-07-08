@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import {
   ExistingTicketSnapshot,
+  ImportJob,
   ImportSummary,
   TicketHistoryInsert,
   TicketRecord
@@ -14,6 +15,23 @@ import { isClosedTicketState } from "@/lib/tickets";
 const UPSERT_CHUNK_SIZE = 500;
 const SELECT_CHUNK_SIZE = 500;
 const HISTORY_CHUNK_SIZE = 1000;
+
+type ImportBatchRow = {
+  id: string;
+  filename: string | null;
+  total_rows: number | null;
+  processed_rows: number | null;
+  duplicate_rows: number | null;
+  new_tickets: number | null;
+  reopened_tickets: number | null;
+  changed_tickets: number | null;
+  unchanged_tickets: number | null;
+  changed_fields: number | null;
+  status: "queued" | "running" | "completed" | "failed";
+  error_message: string | null;
+  imported_at: string;
+  completed_at: string | null;
+};
 
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = [];
@@ -70,6 +88,87 @@ function dedupeTicketsById(ticketRecords: TicketRecord[]) {
   };
 }
 
+function mapImportBatchRow(row: ImportBatchRow): ImportJob {
+  return {
+    filename: row.filename || "import.csv",
+    totalRows: row.total_rows || 0,
+    processedRows: row.processed_rows || 0,
+    duplicateRows: row.duplicate_rows || 0,
+    newTickets: row.new_tickets || 0,
+    reopenedTickets: row.reopened_tickets || 0,
+    changedTickets: row.changed_tickets || 0,
+    unchangedTickets: row.unchanged_tickets || 0,
+    changedFields: row.changed_fields || 0,
+    importBatchId: row.id,
+    status: row.status,
+    errorMessage: row.error_message,
+    importedAt: row.imported_at,
+    completedAt: row.completed_at
+  };
+}
+
+export async function createQueuedImportBatch(input: {
+  filename: string;
+}): Promise<ImportJob> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("import_batches")
+    .insert({
+      filename: input.filename,
+      total_rows: 0,
+      processed_rows: 0,
+      duplicate_rows: 0,
+      new_tickets: 0,
+      reopened_tickets: 0,
+      changed_tickets: 0,
+      unchanged_tickets: 0,
+      changed_fields: 0,
+      status: "queued",
+      error_message: null,
+      completed_at: null
+    })
+    .select(
+      "id, filename, total_rows, processed_rows, duplicate_rows, new_tickets, reopened_tickets, changed_tickets, unchanged_tickets, changed_fields, status, error_message, imported_at, completed_at"
+    )
+    .single();
+
+  if (error || !data) {
+    throw new Error(`สร้างรอบนำเข้าไม่สำเร็จ: ${error?.message || "ไม่ทราบสาเหตุ"}`);
+  }
+
+  return mapImportBatchRow(data as ImportBatchRow);
+}
+
+export async function getImportJob(importBatchId: string): Promise<ImportJob | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("import_batches")
+    .select(
+      "id, filename, total_rows, processed_rows, duplicate_rows, new_tickets, reopened_tickets, changed_tickets, unchanged_tickets, changed_fields, status, error_message, imported_at, completed_at"
+    )
+    .eq("id", importBatchId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`โหลดสถานะรอบนำเข้าไม่สำเร็จ: ${error.message}`);
+  }
+
+  return data ? mapImportBatchRow(data as ImportBatchRow) : null;
+}
+
+async function markImportBatchFailed(importBatchId: string, error: unknown) {
+  const supabase = createSupabaseAdminClient();
+
+  await supabase
+    .from("import_batches")
+    .update({
+      status: "failed",
+      error_message: error instanceof Error ? error.message : "นำเข้าข้อมูลไม่สำเร็จโดยไม่ทราบสาเหตุ",
+      completed_at: new Date().toISOString()
+    })
+    .eq("id", importBatchId);
+}
+
 export async function processImportCsv(file: File): Promise<ImportSummary> {
   const filename = file.name || "import.csv";
   const text = await file.text();
@@ -79,86 +178,110 @@ export async function processImportCsv(file: File): Promise<ImportSummary> {
 export async function processImportCsvFromStorage(input: {
   path: string;
   filename: string;
+  importBatchId?: string;
 }): Promise<ImportSummary> {
   const supabase = createSupabaseAdminClient();
-  const downloadResult = await supabase.storage.from(IMPORT_BUCKET).download(input.path);
-
-  if (downloadResult.error || !downloadResult.data) {
-    throw new Error(`โหลดไฟล์นำเข้าจากพื้นที่เก็บไฟล์ไม่สำเร็จ: ${downloadResult.error?.message || "ไม่พบไฟล์"}`);
-  }
 
   try {
+    const downloadResult = await supabase.storage.from(IMPORT_BUCKET).download(input.path);
+
+    if (downloadResult.error || !downloadResult.data) {
+      throw new Error(`โหลดไฟล์นำเข้าจากพื้นที่เก็บไฟล์ไม่สำเร็จ: ${downloadResult.error?.message || "ไม่พบไฟล์"}`);
+    }
+
     const text = await downloadResult.data.text();
-    return await processImportCsvText(text, input.filename);
+    return await processImportCsvText(text, input.filename, {
+      importBatchId: input.importBatchId
+    });
+  } catch (error) {
+    if (input.importBatchId) {
+      await markImportBatchFailed(input.importBatchId, error);
+    }
+
+    throw error;
   } finally {
     await supabase.storage.from(IMPORT_BUCKET).remove([input.path]);
   }
 }
 
-export async function processImportCsvText(text: string, filename: string): Promise<ImportSummary> {
-  const parsed = Papa.parse<Record<string, string>>(text, {
-    header: true,
-    skipEmptyLines: "greedy"
-  });
-
-  const blockingParseErrors = parsed.errors.filter((error) => {
-    const errorType = (error as { type?: string }).type;
-    return errorType !== "FieldMismatch";
-  });
-
-  if (blockingParseErrors.length > 0) {
-    const firstError = blockingParseErrors[0];
-    throw new Error(`CSV parse error at row ${firstError.row}: ${firstError.message}`);
+export async function processImportCsvText(
+  text: string,
+  filename: string,
+  options?: {
+    importBatchId?: string;
   }
-
-  if (parsed.errors.length > 0) {
-    console.warn("CSV import continued with row-level field mismatches", {
-      filename,
-      mismatchCount: parsed.errors.length,
-      firstMismatch: parsed.errors[0]
-    });
-  }
-
-  const columnMap = validateCsvColumns(parsed.meta.fields || []);
-
-  const normalizedRows = parsed.data
-    .map((row: Record<string, string>) => normalizeCsvRow(row, columnMap))
-    .filter((row) => row.ticket_id.trim().length > 0);
-
-  if (normalizedRows.length === 0) {
-    throw new Error("CSV does not contain any valid rows");
-  }
-
-  const normalizedTicketRecords = normalizedRows.map((row) => normalizeTicket(row));
-  const {
-    ticketRecords,
-    duplicateRows
-  } = dedupeTicketsById(normalizedTicketRecords);
-  const uniqueTicketIds = [...new Set(ticketRecords.map((row) => row.ticket_id))];
+): Promise<ImportSummary> {
   const supabase = createSupabaseAdminClient();
-
-  const { data: createdBatch, error: createBatchError } = await supabase
-    .from("import_batches")
-    .insert({
-      filename,
-      total_rows: normalizedTicketRecords.length,
-      new_tickets: 0,
-      changed_tickets: 0,
-      unchanged_tickets: 0,
-      status: "running",
-      error_message: null,
-      completed_at: null
-    })
-    .select("id")
-    .single();
-
-  if (createBatchError || !createdBatch) {
-    throw new Error(`สร้างรอบนำเข้าไม่สำเร็จ: ${createBatchError?.message || "ไม่ทราบสาเหตุ"}`);
-  }
-
-  const importBatchId = createdBatch.id as string;
+  let importBatchId = options?.importBatchId || "";
 
   try {
+    if (importBatchId) {
+      const { error } = await supabase
+        .from("import_batches")
+        .update({
+          status: "running",
+          error_message: null,
+          completed_at: null
+        })
+        .eq("id", importBatchId);
+
+      if (error) {
+        throw new Error(`อัปเดตสถานะรอบนำเข้าไม่สำเร็จ: ${error.message}`);
+      }
+    } else {
+      const queuedBatch = await createQueuedImportBatch({ filename });
+      importBatchId = queuedBatch.importBatchId;
+      const { error } = await supabase
+        .from("import_batches")
+        .update({
+          status: "running"
+        })
+        .eq("id", importBatchId);
+
+      if (error) {
+        throw new Error(`อัปเดตสถานะรอบนำเข้าไม่สำเร็จ: ${error.message}`);
+      }
+    }
+
+    const parsed = Papa.parse<Record<string, string>>(text, {
+      header: true,
+      skipEmptyLines: "greedy"
+    });
+
+    const blockingParseErrors = parsed.errors.filter((error) => {
+      const errorType = (error as { type?: string }).type;
+      return errorType !== "FieldMismatch";
+    });
+
+    if (blockingParseErrors.length > 0) {
+      const firstError = blockingParseErrors[0];
+      throw new Error(`CSV parse error at row ${firstError.row}: ${firstError.message}`);
+    }
+
+    if (parsed.errors.length > 0) {
+      console.warn("CSV import continued with row-level field mismatches", {
+        filename,
+        mismatchCount: parsed.errors.length,
+        firstMismatch: parsed.errors[0]
+      });
+    }
+
+    const columnMap = validateCsvColumns(parsed.meta.fields || []);
+
+    const normalizedRows = parsed.data
+      .map((row: Record<string, string>) => normalizeCsvRow(row, columnMap))
+      .filter((row) => row.ticket_id.trim().length > 0);
+
+    if (normalizedRows.length === 0) {
+      throw new Error("CSV does not contain any valid rows");
+    }
+
+    const normalizedTicketRecords = normalizedRows.map((row) => normalizeTicket(row));
+    const {
+      ticketRecords,
+      duplicateRows
+    } = dedupeTicketsById(normalizedTicketRecords);
+    const uniqueTicketIds = [...new Set(ticketRecords.map((row) => row.ticket_id))];
 
     const existingTicketMap = new Map<string, ExistingTicketSnapshot>();
 
@@ -295,9 +418,14 @@ export async function processImportCsvText(text: string, filename: string): Prom
     const { error: updateBatchError } = await supabase
       .from("import_batches")
       .update({
+        total_rows: normalizedTicketRecords.length,
+        processed_rows: ticketRecords.length,
+        duplicate_rows: duplicateRows,
         new_tickets: newTickets,
+        reopened_tickets: reopenedTickets,
         changed_tickets: changedTickets,
         unchanged_tickets: unchangedTickets,
+        changed_fields: changedFields,
         status: "completed",
         error_message: null,
         completed_at: new Date().toISOString()
@@ -321,14 +449,9 @@ export async function processImportCsvText(text: string, filename: string): Prom
       importBatchId
     };
   } catch (error) {
-    await supabase
-      .from("import_batches")
-      .update({
-        status: "failed",
-        error_message: error instanceof Error ? error.message : "นำเข้าข้อมูลไม่สำเร็จโดยไม่ทราบสาเหตุ",
-        completed_at: new Date().toISOString()
-      })
-      .eq("id", importBatchId);
+    if (importBatchId) {
+      await markImportBatchFailed(importBatchId, error);
+    }
 
     throw error;
   }

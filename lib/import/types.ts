@@ -69,3 +69,12 @@ export type ImportSummary = {
   changedFields: number;
   importBatchId: string;
 };
+
+export type ImportJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type ImportJob = ImportSummary & {
+  status: ImportJobStatus;
+  errorMessage: string | null;
+  importedAt: string;
+  completedAt: string | null;
+};
