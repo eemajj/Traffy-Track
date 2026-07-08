@@ -10,9 +10,15 @@
 - ปรับ Excel export รายฝ่ายให้พร้อมพิมพ์/เขียนมือมากขึ้น โดยขยายคอลัมน์ J-L และเพิ่มความสูงแถวตามข้อความ
 - เพิ่ม PDF export พร้อมพิมพ์รายฝ่าย แบ่งหน้า A4 แนวนอนอัตโนมัติแล้ว
 - เพิ่ม skeleton loading สำหรับหน้าหลัก และ progress bar ในหน้า import แล้ว
+- ปรับ import ให้รองรับ `ticket_id` ซ้ำใน CSV เดียวกันแบบ deterministic แล้ว พร้อมสรุปแถวซ้ำ/จำนวนเรื่องที่ประมวลผลจริง/จำนวน field ที่เปลี่ยน
 - Server ล่าสุดเปิดไว้ที่ `http://127.0.0.1:3000` ถ้าพรุ่งนี้เข้าไม่ได้ให้ restart ใหม่
 
 ## Done
+- ต่อจาก memory และแก้ local วันที่ 2026-07-07: import dedupe `ticket_id` ซ้ำในไฟล์เดียวกันก่อน upsert โดยใช้แถวท้ายสุดเป็นค่าที่นำเข้า
+- เพิ่มผลลัพธ์ import: `processedRows`, `duplicateRows`, และ `changedFields`
+- หน้า `/import` แสดง `เรื่องที่ประมวลผลจริง`, `แถว ticket ซ้ำที่ข้าม`, และ `field ที่เปลี่ยนในเรื่องเดิม`
+- หลัง import revalidate `/cases` เพิ่มจาก `/dashboard` และ `/report`
+- ยืนยันหลังแก้ import dedupe ว่า `npm run typecheck`, `npm run lint`, และ `npm run build` ผ่าน
 - นำเข้าฟอนต์ Tahoma (tahoma.ttf) จาก Desktop และคัดลอก Tahoma Bold (tahomabd.ttf) จากระบบมาไว้ใน `public/fonts` เพื่อความสมบูรณ์ในการสร้าง PDF บน local และ server
 - ปรับปรุง `lib/report-pdf.ts` ให้จัดลำดับการโหลดฟอนต์มาใช้ Tahoma (.ttf) ตัวใหม่เป็นอันดับแรกสุด ป้องกันปัญหาการอ่านไฟล์ .woff และสระเพี้ยนใน PDFKit
 - อ่าน requirement หลักจาก `Requirement/requirement.md`

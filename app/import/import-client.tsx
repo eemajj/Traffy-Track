@@ -7,9 +7,13 @@ import { DragEvent, useMemo, useRef, useState } from "react";
 type ImportResult = {
   filename: string;
   totalRows: number;
+  processedRows: number;
+  duplicateRows: number;
   newTickets: number;
+  reopenedTickets: number;
   changedTickets: number;
   unchangedTickets: number;
+  changedFields: number;
   importBatchId: string;
 };
 
@@ -325,7 +329,7 @@ export function ImportClient() {
             <p className="rounded-full bg-brand/10 px-4 py-2 text-sm font-semibold text-brand">{result.filename}</p>
           </div>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-2xl bg-surface p-4">
               <p className="text-sm text-muted">แถวทั้งหมด</p>
               <p className="mt-2 text-3xl font-semibold">{result.totalRows}</p>
@@ -338,9 +342,27 @@ export function ImportClient() {
               <p className="text-sm text-warning">เรื่องที่เปลี่ยน</p>
               <p className="mt-2 text-3xl font-semibold text-warning">{result.changedTickets}</p>
             </div>
+            <div className="rounded-2xl border border-warning/25 bg-[rgba(201,131,34,0.12)] p-4">
+              <p className="text-sm text-warning">เปิดกลับ</p>
+              <p className="mt-2 text-3xl font-semibold text-warning">{result.reopenedTickets}</p>
+            </div>
             <div className="rounded-2xl bg-surface-strong p-4">
               <p className="text-sm text-muted">ไม่เปลี่ยน</p>
               <p className="mt-2 text-3xl font-semibold text-ink">{result.unchangedTickets}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+            <div className="rounded-2xl border border-border bg-surface px-4 py-3">
+              <p className="text-muted">เรื่องที่ประมวลผลจริง</p>
+              <p className="mt-1 font-semibold text-ink">{result.processedRows}</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-surface px-4 py-3">
+              <p className="text-muted">แถว ticket ซ้ำที่ข้าม</p>
+              <p className="mt-1 font-semibold text-ink">{result.duplicateRows}</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-surface px-4 py-3">
+              <p className="text-muted">field ที่เปลี่ยนในเรื่องเดิม</p>
+              <p className="mt-1 font-semibold text-ink">{result.changedFields}</p>
             </div>
           </div>
           <div className="mt-6">

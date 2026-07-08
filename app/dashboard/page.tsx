@@ -77,7 +77,7 @@ export default async function DashboardPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-4">
+          <div className="grid gap-4 lg:grid-cols-5">
             <section className="rounded-3xl bg-white p-6 shadow-panel">
               <p className="text-sm text-slate-500">เรื่องคงค้างทั้งหมด</p>
               <p className="mt-2 text-3xl font-bold">{formatNumber(data.pendingTicketCount)}</p>
@@ -89,6 +89,10 @@ export default async function DashboardPage() {
             <section className="rounded-3xl bg-white p-6 shadow-panel">
               <p className="text-sm text-slate-500">เรื่องใหม่รอบล่าสุด</p>
               <p className="mt-2 text-3xl font-bold">{formatNumber(data.latestBatch?.new_tickets ?? 0)}</p>
+            </section>
+            <section className="rounded-3xl border border-warning/25 bg-warning/10 p-6">
+              <p className="text-sm text-warning">เปิดกลับรอบล่าสุด</p>
+              <p className="mt-2 text-3xl font-bold text-warning">{formatNumber(data.reopenedTicketCount)}</p>
             </section>
             <section className="rounded-3xl bg-white p-6 shadow-panel">
               <p className="text-sm text-slate-500">รายการเปลี่ยนสำคัญ</p>
@@ -199,6 +203,12 @@ export default async function DashboardPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
+                    href="/cases?view=reopened"
+                    className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning hover:bg-warning/15"
+                  >
+                    ดูเรื่องเปิดกลับ
+                  </Link>
+                  <Link
                     href="/cases?view=status-changed"
                     className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning hover:bg-warning/15"
                   >
@@ -246,6 +256,14 @@ export default async function DashboardPage() {
                                 <span className="font-semibold text-success">{change.label}</span>
                                 <span className="mx-2 text-slate-400">·</span>
                                 เพิ่มเข้าระบบด้วยสถานะ {formatChangeValue(change.newValue, change.field)}
+                              </p>
+                            ) : change.field === "reopened" ? (
+                              <p className="text-slate-700">
+                                <span className="font-semibold text-warning">{change.label}</span>
+                                <span className="mx-2 text-slate-400">จาก</span>
+                                <span>{formatChangeValue(change.oldValue, change.field)}</span>
+                                <span className="mx-2 text-slate-400">กลับเป็น</span>
+                                <span>{formatChangeValue(change.newValue, change.field)}</span>
                               </p>
                             ) : (
                               <p className="text-slate-700">

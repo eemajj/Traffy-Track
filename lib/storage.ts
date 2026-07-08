@@ -16,6 +16,7 @@ export const IMPORT_ALLOWED_TYPES = new Set([
 ]);
 
 export const IMPORT_MAX_BYTES = 80 * 1024 * 1024;
+export const REPORT_EXPORT_MAX_BYTES = 250 * 1024 * 1024;
 export const REPORT_EXPORT_SIGNED_URL_SECONDS = 10 * 60;
 
 type StorageClient = SupabaseClient;
@@ -49,6 +50,17 @@ export async function ensurePrivateBucket(
   const existingBucket = await supabase.storage.getBucket(bucket);
 
   if (!existingBucket.error) {
+    if (options?.allowedMimeTypes) {
+      const updateResult = await supabase.storage.updateBucket(bucket, {
+        public: false,
+        allowedMimeTypes: options.allowedMimeTypes
+      });
+
+      if (updateResult.error) {
+        throw new Error(`อัปเดตพื้นที่เก็บไฟล์ ${bucket} ไม่สำเร็จ: ${updateResult.error.message}`);
+      }
+    }
+
     return;
   }
 
@@ -100,10 +112,13 @@ export async function uploadBufferAndCreateSignedDownload(input: {
   contentType: string;
   filename: string;
   expiresIn?: number;
+  fileSizeLimit?: number;
 }) {
   const supabase = createSupabaseAdminClient();
 
-  await ensurePrivateBucket(supabase, input.bucket);
+  await ensurePrivateBucket(supabase, input.bucket, {
+    fileSizeLimit: input.fileSizeLimit
+  });
 
   const uploadResult = await supabase.storage.from(input.bucket).upload(input.path, input.buffer, {
     contentType: input.contentType,

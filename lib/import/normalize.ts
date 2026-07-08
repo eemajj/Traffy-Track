@@ -1,8 +1,44 @@
 import { CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
 
+type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
+
+const optionalCsvColumns = new Set<RequiredCsvColumn>([
+  "photo",
+  "address",
+  "star",
+  "hashtag",
+  "coords"
+]);
+
+const csvColumnAliases: Partial<Record<RequiredCsvColumn, string[]>> = {
+  ticket_id: ["ticket id", "ticketid"],
+  photo: ["Photo", "photo_url", "photo url", "image", "image_url", "image url", "picture"],
+  address: ["location", "address_detail", "address detail", "place"],
+  org_response: ["org response", "orgresponse"],
+  last_activity: ["last activity", "lastactivity"],
+  star: ["stars", "rating", "score"],
+  hashtag: ["hastag", "hash_tag", "hash tag", "tag", "tags"],
+  coords: ["coord", "coordinate", "coordinates", "latlng", "lat_lng", "lat lng", "latitude_longitude"]
+};
+
 function cleanValue(value: string | undefined) {
   const normalized = (value || "").trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function stripBom(value: string) {
+  return value.replace(/^\uFEFF/, "");
+}
+
+function normalizeHeaderKey(value: string) {
+  return stripBom(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function getAcceptedHeaderKeys(column: RequiredCsvColumn) {
+  return [column, ...(csvColumnAliases[column] || [])].map((alias) => normalizeHeaderKey(alias));
 }
 
 function parseTimestamp(value: string | undefined) {
@@ -43,24 +79,72 @@ function parseCoords(value: string | undefined) {
   return { lat: parts[0], lng: parts[1] };
 }
 
-export function validateCsvColumns(columns: string[]) {
-  const trimmedColumns = columns.map((column) => column.trim());
-  const missingColumns = requiredCsvColumns.filter((column) => !trimmedColumns.includes(column));
+export function validateCsvColumns(columns: string[]): CsvColumnMap {
+  const headerLookup = new Map<string, string>();
+
+  for (const column of columns) {
+    const normalizedColumn = normalizeHeaderKey(column);
+
+    if (normalizedColumn && !headerLookup.has(normalizedColumn)) {
+      headerLookup.set(normalizedColumn, column);
+    }
+  }
+
+  const columnMap = {} as CsvColumnMap;
+  const missingColumns: RequiredCsvColumn[] = [];
+
+  for (const column of requiredCsvColumns) {
+    const matchedColumn = getAcceptedHeaderKeys(column)
+      .map((acceptedColumn) => headerLookup.get(acceptedColumn))
+      .find((acceptedColumn): acceptedColumn is string => Boolean(acceptedColumn));
+
+    if (!matchedColumn) {
+      if (!optionalCsvColumns.has(column)) {
+        missingColumns.push(column);
+      }
+      continue;
+    }
+
+    columnMap[column] = matchedColumn;
+  }
 
   if (missingColumns.length > 0) {
     throw new Error(`CSV is missing required columns: ${missingColumns.join(", ")}`);
   }
 
-  return trimmedColumns;
+  return columnMap;
 }
 
-export function pickCsvRowValue(row: Record<string, string>, column: RequiredCsvColumn) {
-  return row[column] ?? row[column.trim()] ?? "";
+export function pickCsvRowValue(row: Record<string, string>, column: string | undefined) {
+  if (!column) {
+    return "";
+  }
+
+  return row[column] ?? row[stripBom(column).trim()] ?? "";
 }
 
-export function normalizeCsvRow(row: Record<string, string>): CsvRow {
+function getParsedExtraValues(row: Record<string, string>) {
+  const parsedExtra = row.__parsed_extra as unknown;
+
+  if (!Array.isArray(parsedExtra)) {
+    return [];
+  }
+
+  return parsedExtra.map((value) => String(value));
+}
+
+export function normalizeCsvRow(row: Record<string, string>, columnMap: CsvColumnMap): CsvRow {
   return Object.fromEntries(
-    requiredCsvColumns.map((column) => [column, pickCsvRowValue(row, column)])
+    requiredCsvColumns.map((column) => {
+      const value = pickCsvRowValue(row, columnMap[column]);
+
+      if (column === "coords") {
+        const parsedExtraValues = getParsedExtraValues(row);
+        return [column, parsedExtraValues.length > 0 ? [value, ...parsedExtraValues].join(",") : value];
+      }
+
+      return [column, value];
+    })
   ) as CsvRow;
 }
 

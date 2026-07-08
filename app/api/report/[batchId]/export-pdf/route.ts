@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { buildReportDepartmentPdfBuffer, buildReportDepartmentPdfFilename } from "@/lib/report-pdf";
 import { getReportDepartmentExportData } from "@/lib/report";
-import { REPORT_EXPORT_BUCKET, sanitizeStorageSegment, uploadBufferAndCreateSignedDownload } from "@/lib/storage";
+import {
+  REPORT_EXPORT_BUCKET,
+  REPORT_EXPORT_MAX_BYTES,
+  sanitizeStorageSegment,
+  uploadBufferAndCreateSignedDownload
+} from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +51,8 @@ export async function GET(
     path: objectPath,
     buffer: new Uint8Array(buffer),
     contentType: "application/pdf",
-    filename
+    filename,
+    fileSizeLimit: REPORT_EXPORT_MAX_BYTES
   });
 
   return NextResponse.redirect(signedUrl);

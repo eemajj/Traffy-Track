@@ -18,13 +18,14 @@ type CasesPageProps = {
 
 const viewLabels: Record<CaseListView, string> = {
   pending: "เรื่องคงค้าง",
+  reopened: "เปิดกลับรอบล่าสุด",
   "status-changed": "เปลี่ยนสถานะรอบล่าสุด",
   unassigned: "รอจัดฝ่าย",
   closed: "ปิดแล้ว",
   all: "ทั้งหมด"
 };
 
-const views: CaseListView[] = ["pending", "status-changed", "unassigned", "closed", "all"];
+const views: CaseListView[] = ["pending", "reopened", "status-changed", "unassigned", "closed", "all"];
 const pageSizeOptions = [10, 50, 100];
 
 function formatDateTime(value: string | null) {
@@ -97,7 +98,11 @@ function CaseCard({ item }: { item: CaseListItem }) {
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
               {item.state || "ไม่ระบุสถานะ"}
             </span>
-            {item.latestStateChange ? (
+            {item.reopenedInLatestBatch ? (
+              <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
+                เปิดกลับ
+              </span>
+            ) : item.latestStateChange ? (
               <span className="rounded-full bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
                 สถานะเปลี่ยน
               </span>
@@ -114,10 +119,12 @@ function CaseCard({ item }: { item: CaseListItem }) {
 
       {item.latestStateChange ? (
         <div className="mt-4 rounded-2xl border border-warning/25 bg-warning/10 px-4 py-3 text-sm leading-6 text-ink">
-          <span className="font-semibold text-warning">สถานะเปลี่ยนรอบล่าสุด</span>
+          <span className="font-semibold text-warning">
+            {item.reopenedInLatestBatch ? "เปิดกลับรอบล่าสุด" : "สถานะเปลี่ยนรอบล่าสุด"}
+          </span>
           <span className="mx-2 text-muted">จาก</span>
           <span>{item.latestStateChange.old_value || "-"}</span>
-          <span className="mx-2 text-muted">เป็น</span>
+          <span className="mx-2 text-muted">{item.reopenedInLatestBatch ? "กลับเป็น" : "เป็น"}</span>
           <span>{item.latestStateChange.new_value || "-"}</span>
           <span className="mx-2 text-muted">เมื่อ</span>
           <span>{formatDateTime(item.latestStateChange.detected_at)}</span>
@@ -226,7 +233,9 @@ export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
             <div className="mt-4 flex flex-col gap-2 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
               <p>
                 พบ {formatNumber(data.totalCount)} เรื่องในมุมมอง {viewLabels[data.view]}
-                {data.latestBatch && data.view === "status-changed" ? ` จากรอบนำเข้า ${formatDateTime(data.latestBatch.imported_at)}` : ""}
+                {data.latestBatch && (data.view === "reopened" || data.view === "status-changed")
+                  ? ` จากรอบนำเข้า ${formatDateTime(data.latestBatch.imported_at)}`
+                  : ""}
                 {data.totalCount > 0
                   ? ` · แสดง ${formatNumber((data.page - 1) * data.pageSize + 1)}-${formatNumber(
                       Math.min(data.page * data.pageSize, data.totalCount)

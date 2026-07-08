@@ -2,12 +2,12 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
-import { CLOSED_TICKET_STATES, buildClosedStatesFilter } from "@/lib/tickets";
+import { CLOSED_TICKET_STATES, buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
 
 const DEFAULT_CASES_PAGE_SIZE = 50;
 const ALLOWED_CASES_PAGE_SIZES = [10, 50, 100] as const;
 
-export type CaseListView = "pending" | "status-changed" | "unassigned" | "closed" | "all";
+export type CaseListView = "pending" | "reopened" | "status-changed" | "unassigned" | "closed" | "all";
 
 export type CaseListFilters = {
   view?: string;
@@ -37,6 +37,7 @@ export type CaseListItem = {
     new_value: string | null;
     detected_at: string;
   } | null;
+  reopenedInLatestBatch?: boolean;
 };
 
 type TicketRow = Omit<CaseListItem, "dept_list"> & {
@@ -122,7 +123,7 @@ export type CaseDetailData =
     };
 
 function normalizeView(value: string | undefined): CaseListView {
-  if (value === "status-changed" || value === "unassigned" || value === "closed" || value === "all") {
+  if (value === "reopened" || value === "status-changed" || value === "unassigned" || value === "closed" || value === "all") {
     return value;
   }
 
@@ -152,7 +153,7 @@ function normalizeTicketRelation(relation: TicketRow | TicketRow[] | null) {
 }
 
 function isClosedState(state: string | null) {
-  return Boolean(state && CLOSED_TICKET_STATES.includes(state as (typeof CLOSED_TICKET_STATES)[number]));
+  return isClosedTicketState(state);
 }
 
 function doesTicketMatchSearch(ticket: CaseListItem, q: string) {
@@ -195,7 +196,7 @@ function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; 
   const prefix = filters.relationPrefix ? `${filters.relationPrefix}.` : "";
   let nextQuery = query;
 
-  if (filters.view === "pending" || filters.view === "status-changed") {
+  if (filters.view === "pending" || filters.view === "reopened" || filters.view === "status-changed") {
     nextQuery = nextQuery.not(`${prefix}state`, "in", buildClosedStatesFilter());
   }
 
@@ -281,7 +282,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
     const stateOptions = Array.from(new Set(((statesResult.data as Array<{ state: string | null }> | null) || []).map((row) => row.state).filter(Boolean) as string[]));
     const departmentOptions = (((departmentsResult.data as Array<{ dept_name: string }> | null) || []).map((row) => row.dept_name));
 
-    if (view === "status-changed") {
+    if (view === "reopened" || view === "status-changed") {
       if (!latestBatch) {
         return {
           status: "ready",
@@ -305,12 +306,16 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
           "id, ticket_id, old_value, new_value, detected_at, tickets!inner(ticket_id, type, comment, address, subdistrict, district, state, org_response, dept_list, timestamp, last_activity, first_seen_at, updated_at)"
         )
         .eq("import_batch_id", latestBatch.id)
-        .eq("changed_field", "state")
+        .eq("changed_field", view === "reopened" ? "reopened" : "state")
         .order("detected_at", { ascending: false })
         .limit(5000);
 
       if (historyResult.error) {
-        throw new Error(`โหลดรายการเปลี่ยนสถานะไม่สำเร็จ: ${historyResult.error.message}`);
+        throw new Error(
+          view === "reopened"
+            ? `โหลดรายการเรื่องเปิดกลับไม่สำเร็จ: ${historyResult.error.message}`
+            : `โหลดรายการเปลี่ยนสถานะไม่สำเร็จ: ${historyResult.error.message}`
+        );
       }
 
       const filteredItems = ((historyResult.data as StateChangeRow[] | null) || [])
@@ -327,7 +332,8 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
               old_value: row.old_value,
               new_value: row.new_value,
               detected_at: row.detected_at
-            }
+            },
+            reopenedInLatestBatch: view === "reopened"
           };
         })
         .filter(Boolean) as CaseListItem[];
@@ -441,7 +447,9 @@ export async function getCaseDetailData(ticketId: string): Promise<CaseDetailDat
         dept_list: Array.isArray(ticket.dept_list) ? ticket.dept_list : []
       },
       timeline,
-      stateTimeline: timeline.filter((item) => item.changed_field === "state" || item.changed_field === "new_ticket")
+      stateTimeline: timeline.filter(
+        (item) => item.changed_field === "state" || item.changed_field === "new_ticket" || item.changed_field === "reopened"
+      )
     };
   } catch (error) {
     return {

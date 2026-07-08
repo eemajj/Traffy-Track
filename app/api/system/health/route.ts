@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/lib/api-auth";
+import { getAdminOverview } from "@/lib/admin";
 import { env, hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { buildClosedStatesFilter } from "@/lib/tickets";
@@ -50,6 +51,7 @@ export async function GET() {
     checks.storage = !bucketResult.error;
 
     const status = checks.database && checks.storage ? "ok" : "degraded";
+    const adminOverview = await getAdminOverview();
 
     return NextResponse.json(
       {
@@ -60,6 +62,14 @@ export async function GET() {
           pending: pendingCountResult.count || 0
         },
         latestImport: latestImportResult.data || null,
+        usage:
+          adminOverview.status === "ready"
+            ? {
+                database: adminOverview.database,
+                storage: adminOverview.storage,
+                limits: adminOverview.limits
+              }
+            : null,
         errors: [
           ticketCountResult.error?.message,
           pendingCountResult.error?.message,

@@ -5,7 +5,7 @@ import { verifySessionCookieValue } from "@/lib/session";
 
 const authCookieName = process.env.APP_AUTH_COOKIE || "citydata-passcode";
 
-const protectedPrefixes = ["/import", "/dashboard", "/cases", "/report"];
+const protectedPrefixes = ["/import", "/dashboard", "/cases", "/report", "/admin"];
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -28,5 +28,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/import/:path*", "/dashboard/:path*", "/cases/:path*", "/report/:path*"]
+  matcher: ["/import/:path*", "/dashboard/:path*", "/cases/:path*", "/report/:path*", "/admin/:path*"]
 };

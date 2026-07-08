@@ -2,7 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
-import { CLOSED_TICKET_STATES, buildClosedStatesFilter } from "@/lib/tickets";
+import { buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
 
 type LatestImportBatch = {
   id: string;
@@ -80,6 +80,7 @@ export type DashboardData =
       latestBatch: LatestImportBatch | null;
       pendingTicketCount: number;
       unassignedCount: number;
+      reopenedTicketCount: number;
       actionableChangeCount: number;
       departmentSummary: DepartmentSummaryRow[];
       unassignedTickets: UnassignedTicketRow[];
@@ -102,6 +103,7 @@ function normalizeTicketRelation(relation: TicketRelation | TicketRelation[] | n
 function getChangeLabel(field: string) {
   const labels: Record<string, string> = {
     new_ticket: "เรื่องใหม่",
+    reopened: "เปิดกลับ",
     state: "สถานะ",
     org_response: "หน่วยงาน",
     star: "คะแนนดาว",
@@ -109,10 +111,6 @@ function getChangeLabel(field: string) {
   };
 
   return labels[field] || field;
-}
-
-function isClosedState(state: string | null) {
-  return Boolean(state && CLOSED_TICKET_STATES.some((closedState) => closedState === state));
 }
 
 function buildRecentTicketChanges(rows: RecentChangeRow[]) {
@@ -192,6 +190,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       departmentSummaryResult,
       unassignedTicketsResult,
       actionableChangeCountResult,
+      reopenedTicketCountResult,
       recentChangesResult
     ] = await Promise.all([
       supabase
@@ -217,6 +216,14 @@ export async function getDashboardData(): Promise<DashboardData> {
             .select("id, tickets!inner(state)", { count: "exact", head: true })
             .eq("import_batch_id", latestBatch.id)
             .neq("changed_field", "last_activity")
+            .not("tickets.state", "in", closedFilter)
+        : Promise.resolve({ data: [], error: null, count: 0 }),
+      latestBatch
+        ? supabase
+            .from("ticket_history")
+            .select("id, tickets!inner(state)", { count: "exact", head: true })
+            .eq("import_batch_id", latestBatch.id)
+            .eq("changed_field", "reopened")
             .not("tickets.state", "in", closedFilter)
         : Promise.resolve({ data: [], error: null, count: 0 }),
       latestBatch
@@ -253,13 +260,17 @@ export async function getDashboardData(): Promise<DashboardData> {
       throw new Error(`นับจำนวนรายการเปลี่ยนแปลงสำคัญไม่สำเร็จ: ${actionableChangeCountResult.error.message}`);
     }
 
+    if (reopenedTicketCountResult.error) {
+      throw new Error(`นับจำนวนเรื่องเปิดกลับไม่สำเร็จ: ${reopenedTicketCountResult.error.message}`);
+    }
+
     if (recentChangesResult.error) {
       throw new Error(`โหลดรายการเปลี่ยนแปลงล่าสุดไม่สำเร็จ: ${recentChangesResult.error.message}`);
     }
 
     const recentRows = ((recentChangesResult.data as RecentChangeRow[] | null) || []).filter((change) => {
       const ticket = normalizeTicketRelation(change.tickets);
-      return !ticket || !isClosedState(ticket.state);
+      return !ticket || !isClosedTicketState(ticket.state);
     });
 
     return {
@@ -267,6 +278,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       latestBatch,
       pendingTicketCount: pendingCountResult.count || 0,
       unassignedCount: unassignedCountResult.count || 0,
+      reopenedTicketCount: reopenedTicketCountResult.count || 0,
       actionableChangeCount: actionableChangeCountResult.count || 0,
       departmentSummary: (departmentSummaryResult.data as DepartmentSummaryRow[] | null) || [],
       unassignedTickets: (unassignedTicketsResult.data as UnassignedTicketRow[] | null) || [],

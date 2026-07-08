@@ -131,6 +131,23 @@
 - Excel export รายฝ่ายถูกปรับให้พื้นที่ J-L เหมาะกับการเขียนรายละเอียด/เซ็นชื่อมากขึ้น และตั้งค่า print layout เป็น A4 แนวนอนแล้ว
 - PDF export พร้อมพิมพ์รายฝ่ายถูกเพิ่มแล้วที่ `/api/report/[batchId]/export-pdf?dept=...` พร้อมปุ่มใน checklist รายฝ่าย
 - มี skeleton loading สำหรับ route หลักและ progress bar สำหรับ import CSV แล้ว
+- import local ล่าสุดรองรับ CSV ที่มี `ticket_id` ซ้ำในไฟล์เดียวกันแล้ว โดยใช้แถวท้ายสุดของ ticket นั้น, สรุปจำนวนแถวซ้ำที่ข้าม, แสดงจำนวนเรื่องที่ประมวลผลจริง, และแสดงจำนวน field ที่เปลี่ยนในเคสเดิม
+- หลัง import จะ revalidate `/dashboard`, `/report`, และ `/cases`
+
+## Latest Work Log — 2026-07-07 Import Dedupe + Clearer Summary
+- ปรับ `lib/import/process.ts`
+  - dedupe `ticket_id` ในไฟล์เดียวกันก่อน upsert เพื่อเลี่ยง upsert conflict จากแถวซ้ำ
+  - policy คือแถวท้ายสุดของ `ticket_id` เดียวกันชนะ
+  - `totalRows` ยังนับจำนวนแถว valid ทั้งหมดในไฟล์
+  - เพิ่ม `processedRows`, `duplicateRows`, และ `changedFields` ในผลลัพธ์ import
+- ปรับ `app/import/import-client.tsx`
+  - แสดงสรุป `เรื่องที่ประมวลผลจริง`, `แถว ticket ซ้ำที่ข้าม`, และ `field ที่เปลี่ยนในเรื่องเดิม`
+- ปรับ `app/api/import/route.ts`
+  - revalidate `/cases` หลัง import เพิ่มจาก `/dashboard` และ `/report`
+- Verification
+  - `npm run typecheck` ผ่าน
+  - `npm run lint` ผ่าน
+  - `npm run build` ผ่าน
 
 ## Latest Work Log — 2026-07-07 Loading States + Import Progress
 - เพิ่ม `components/page-skeleton.tsx`

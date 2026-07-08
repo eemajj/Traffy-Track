@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { buildReportDepartmentExcelFilename, buildReportDepartmentWorkbookBuffer } from "@/lib/report-excel";
 import { getReportDepartmentExportData } from "@/lib/report";
-import { REPORT_EXPORT_BUCKET, sanitizeStorageSegment, uploadBufferAndCreateSignedDownload } from "@/lib/storage";
+import {
+  REPORT_EXPORT_BUCKET,
+  REPORT_EXPORT_MAX_BYTES,
+  sanitizeStorageSegment,
+  uploadBufferAndCreateSignedDownload
+} from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +51,8 @@ export async function GET(
     path: objectPath,
     buffer,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    filename
+    filename,
+    fileSizeLimit: REPORT_EXPORT_MAX_BYTES
   });
 
   return NextResponse.redirect(signedUrl);

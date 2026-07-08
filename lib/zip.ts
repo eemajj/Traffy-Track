@@ -1,3 +1,5 @@
+import { deflateRawSync } from "node:zlib";
+
 type ZipEntry = {
   filename: string;
   data: Buffer<ArrayBufferLike>;
@@ -43,32 +45,36 @@ export function createZipBuffer(entries: ZipEntry[]) {
   for (const entry of entries) {
     const filename = Buffer.from(entry.filename, "utf8");
     const checksum = crc32(entry.data);
+    const compressedData = deflateRawSync(entry.data, { level: 9 });
+    const shouldCompress = compressedData.length < entry.data.length;
+    const data = shouldCompress ? compressedData : entry.data;
+    const compressionMethod = shouldCompress ? 8 : 0;
 
     const localHeader = Buffer.alloc(30);
     localHeader.writeUInt32LE(0x04034b50, 0);
     localHeader.writeUInt16LE(20, 4);
     localHeader.writeUInt16LE(0x0800, 6);
-    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(compressionMethod, 8);
     localHeader.writeUInt16LE(dosTime, 10);
     localHeader.writeUInt16LE(dosDate, 12);
     localHeader.writeUInt32LE(checksum, 14);
-    localHeader.writeUInt32LE(entry.data.length, 18);
+    localHeader.writeUInt32LE(data.length, 18);
     localHeader.writeUInt32LE(entry.data.length, 22);
     localHeader.writeUInt16LE(filename.length, 26);
     localHeader.writeUInt16LE(0, 28);
 
-    localFileHeaders.push(localHeader, filename, entry.data);
+    localFileHeaders.push(localHeader, filename, data);
 
     const centralHeader = Buffer.alloc(46);
     centralHeader.writeUInt32LE(0x02014b50, 0);
     centralHeader.writeUInt16LE(20, 4);
     centralHeader.writeUInt16LE(20, 6);
     centralHeader.writeUInt16LE(0x0800, 8);
-    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(compressionMethod, 10);
     centralHeader.writeUInt16LE(dosTime, 12);
     centralHeader.writeUInt16LE(dosDate, 14);
     centralHeader.writeUInt32LE(checksum, 16);
-    centralHeader.writeUInt32LE(entry.data.length, 20);
+    centralHeader.writeUInt32LE(data.length, 20);
     centralHeader.writeUInt32LE(entry.data.length, 24);
     centralHeader.writeUInt16LE(filename.length, 28);
     centralHeader.writeUInt16LE(0, 30);
@@ -79,7 +85,7 @@ export function createZipBuffer(entries: ZipEntry[]) {
     centralHeader.writeUInt32LE(offset, 42);
 
     centralDirectoryHeaders.push(centralHeader, filename);
-    offset += localHeader.length + filename.length + entry.data.length;
+    offset += localHeader.length + filename.length + data.length;
   }
 
   const centralDirectory = Buffer.concat(centralDirectoryHeaders);

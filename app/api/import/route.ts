@@ -37,6 +37,7 @@ export async function POST(request: Request) {
 
       revalidatePath("/dashboard");
       revalidatePath("/report");
+      revalidatePath("/cases");
 
       return NextResponse.json(summary, {
         headers: {
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     const summary = await processImportCsv(file);
     revalidatePath("/dashboard");
     revalidatePath("/report");
+    revalidatePath("/cases");
 
     return NextResponse.json(summary, {
       headers: {
@@ -63,6 +65,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "นำเข้าข้อมูลไม่สำเร็จโดยไม่ทราบสาเหตุ";
+    console.error("Import API failed", {
+      message,
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

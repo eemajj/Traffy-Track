@@ -1,7 +1,12 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { createReportBatchAction, deleteReportBatchAction, updateReportBatchAction } from "@/app/report/actions";
+import {
+  archiveReportBatchesAction,
+  createReportBatchAction,
+  deleteReportBatchAction,
+  updateReportBatchAction
+} from "@/app/report/actions";
 import { CreateReportSubmitButton } from "@/app/report/create-report-submit-button";
 import { ReportBatchSubmitButton } from "@/app/report/report-batch-submit-button";
 import { getReportPageData } from "@/lib/report";
@@ -164,6 +169,18 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                   ใช้ย้อนดูรอบรายงานรายสัปดาห์ ตรวจสถานะหลักฐาน และเปิดรายการตรวจรายฝ่ายของแต่ละรอบ
                 </p>
               </div>
+
+              <form action={archiveReportBatchesAction} className="mt-4 rounded-2xl border border-brand/15 bg-brand/5 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">บันทึกประวัติรอบรายงาน</p>
+                    <p className="mt-1 text-sm leading-6 text-muted">
+                      เก็บ summary เบา ๆ ไว้ในระบบก่อนล้างข้อมูลรายงานหรือไฟล์หลักฐานขนาดใหญ่
+                    </p>
+                  </div>
+                  <ReportBatchSubmitButton idleLabel="บันทึก Archive" pendingLabel="กำลังบันทึก..." />
+                </div>
+              </form>
 
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
@@ -387,6 +404,90 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
               </div>
             </section>
           </div>
+
+          <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold tracking-[-0.01em] text-ink">ประวัติรอบรายงาน</h2>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Archive summary สำหรับดูย้อนหลังหลังล้าง report batch หรือไฟล์หลักฐานออกจาก Storage แล้ว
+                </p>
+              </div>
+              <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
+                {formatNumber(data.archives.length)} archives
+              </span>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {data.archives.length === 0 ? (
+                <div className="rounded-2xl bg-surface p-5 text-sm leading-6 text-muted">
+                  ยังไม่มี archive รอบรายงาน กด “บันทึก Archive” เพื่อเก็บประวัติจากรอบรายงานปัจจุบัน
+                </div>
+              ) : (
+                data.archives.map((archive) => (
+                  <article key={archive.id} className="rounded-3xl border border-border bg-surface/55 p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-brand">{formatDate(archive.reportDate)}</p>
+                          <span
+                            className={
+                              archive.completionStatus === "complete"
+                                ? "rounded-full border border-success/25 bg-success/10 px-3 py-1 text-xs font-semibold text-success"
+                                : "rounded-full border border-danger/25 bg-danger/10 px-3 py-1 text-xs font-semibold text-danger"
+                            }
+                          >
+                            {archive.completionStatus === "complete" ? "หลักฐานครบ" : "หลักฐานยังไม่ครบ"}
+                          </span>
+                          {archive.sourceDeleted ? (
+                            <span className="rounded-full border border-warning/25 bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
+                              ล้าง source แล้ว
+                            </span>
+                          ) : null}
+                        </div>
+                        <h3 className="mt-2 text-lg font-semibold tracking-[-0.01em] text-ink">
+                          Archive รอบรายงานวันที่ {formatDate(archive.reportDate)}
+                        </h3>
+                        <p className="mt-1 text-sm text-muted">
+                          เก็บเมื่อ {formatDateTime(archive.archivedAt)} · สร้างรอบเดิมเมื่อ {formatDateTime(archive.reportCreatedAt)}
+                        </p>
+                        {archive.note ? <p className="mt-2 text-sm leading-6 text-ink">{archive.note}</p> : null}
+                      </div>
+                      <div className="rounded-2xl bg-white px-4 py-3 text-sm text-muted">
+                        <p className="font-semibold text-ink">
+                          {formatNumber(archive.evidenceUploadedCount)}/{formatNumber(archive.departmentCount)} ฝ่ายส่งหลักฐาน
+                        </p>
+                        <p className="mt-1">รวม {formatNumber(archive.itemCount)} รายการเรื่อง</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {archive.departments.map((department) => (
+                        <div key={`${archive.id}-${department.deptName}`} className="rounded-2xl bg-white px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm font-semibold leading-6 text-ink">{department.deptName}</p>
+                            <span
+                              className={
+                                department.evidenceUploaded
+                                  ? "rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                                  : "rounded-full bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger"
+                              }
+                            >
+                              {department.evidenceUploaded ? "ส่งแล้ว" : "ยังไม่ส่ง"}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-muted">
+                            {formatNumber(department.itemCount)} เรื่อง
+                            {department.evidenceUploadedAt ? ` · ${formatDateTime(department.evidenceUploadedAt)}` : ""}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       )}
     </AppShell>

@@ -13,7 +13,8 @@ const TABLES = [
   "import_batches",
   "report_batches",
   "report_batch_departments",
-  "report_batch_items"
+  "report_batch_items",
+  "report_archives"
 ] as const;
 
 export async function GET() {

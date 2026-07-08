@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { hasValidSessionCookie } from "@/lib/auth";
-import { createReportBatch, deleteReportBatch, updateReportBatch } from "@/lib/report";
+import { archiveReportBatches, createReportBatch, deleteReportBatch, updateReportBatch } from "@/lib/report";
 
 export async function createReportBatchAction(formData: FormData) {
   if (!(await hasValidSessionCookie())) {
@@ -54,5 +54,16 @@ export async function deleteReportBatchAction(formData: FormData) {
 
   revalidatePath("/report");
   revalidatePath(`/report/${batchId}`);
+  redirect("/report");
+}
+
+export async function archiveReportBatchesAction() {
+  if (!(await hasValidSessionCookie())) {
+    redirect("/login?next=/report");
+  }
+
+  await archiveReportBatches();
+
+  revalidatePath("/report");
   redirect("/report");
 }

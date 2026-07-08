@@ -38,6 +38,7 @@ function formatList(value: string[]) {
 function formatChangeField(value: string) {
   const labels: Record<string, string> = {
     new_ticket: "เรื่องใหม่",
+    reopened: "เปิดกลับ",
     state: "สถานะ",
     org_response: "หน่วยงาน",
     last_activity: "เวลาอัปเดต",
@@ -83,6 +84,11 @@ function Timeline({ title, description, items }: { title: string; description: s
                   <p className="text-sm font-semibold text-ink">{formatChangeField(item.changed_field)}</p>
                   {item.changed_field === "new_ticket" ? (
                     <p className="mt-1 text-sm leading-6 text-muted">เพิ่มเข้าระบบด้วยสถานะ {item.new_value || "-"}</p>
+                  ) : item.changed_field === "reopened" ? (
+                    <p className="mt-1 text-sm leading-6 text-muted">
+                      เปิดกลับจาก <span className="text-ink">{item.old_value || "-"}</span> เป็น{" "}
+                      <span className="text-ink">{item.new_value || "-"}</span>
+                    </p>
                   ) : (
                     <p className="mt-1 text-sm leading-6 text-muted">
                       จาก <span className="text-ink">{item.old_value || "-"}</span> เป็น{" "}

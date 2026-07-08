@@ -49,6 +49,33 @@ type ReportBatchItemRow = {
   ticket_id: string;
 };
 
+type ReportArchiveRow = {
+  id: string;
+  source_report_batch_id: string;
+  report_date: string;
+  report_created_at: string;
+  archived_at: string;
+  note: string | null;
+  department_count: number;
+  item_count: number;
+  evidence_uploaded_count: number;
+  evidence_pending_count: number;
+  completion_status: "complete" | "incomplete";
+  departments: Array<{
+    dept_name: string;
+    item_count: number;
+    evidence_uploaded: boolean;
+    evidence_uploaded_at: string | null;
+  }>;
+  evidence_files: Array<{
+    dept_name: string;
+    evidence_file_url: string;
+    evidence_uploaded_at: string | null;
+  }>;
+  source_deleted: boolean;
+  source_deleted_at: string | null;
+};
+
 export type ReportArchiveStatus = "all" | "complete" | "pending";
 export type ReportArchiveSort =
   | "report_date_desc"
@@ -108,6 +135,32 @@ export type ReportPageData =
         evidencePendingCount: number;
         evidenceProgressPercent: number;
         completionStatus: "complete" | "incomplete";
+      }>;
+      archives: Array<{
+        id: string;
+        sourceReportBatchId: string;
+        reportDate: string;
+        reportCreatedAt: string;
+        archivedAt: string;
+        note: string | null;
+        departmentCount: number;
+        itemCount: number;
+        evidenceUploadedCount: number;
+        evidencePendingCount: number;
+        completionStatus: "complete" | "incomplete";
+        departments: Array<{
+          deptName: string;
+          itemCount: number;
+          evidenceUploaded: boolean;
+          evidenceUploadedAt: string | null;
+        }>;
+        evidenceFiles: Array<{
+          deptName: string;
+          evidenceFileUrl: string;
+          evidenceUploadedAt: string | null;
+        }>;
+        sourceDeleted: boolean;
+        sourceDeletedAt: string | null;
       }>;
       filters: {
         status: ReportArchiveStatus;
@@ -262,12 +315,126 @@ function normalizeReportArchiveSort(value: string | undefined): ReportArchiveSor
   return "report_date_desc";
 }
 
+function buildArchivePayload(input: {
+  batch: ReportBatchRow;
+  departments: ReportBatchDepartmentRow[];
+  items: ReportBatchItemRow[];
+  sourceDeleted?: boolean;
+}) {
+  const itemCountByDept = new Map<string, number>();
+
+  for (const item of input.items) {
+    itemCountByDept.set(item.dept_name, (itemCountByDept.get(item.dept_name) || 0) + 1);
+  }
+
+  const evidenceUploadedCount = input.departments.filter((department) => Boolean(department.evidence_uploaded_at)).length;
+  const evidencePendingCount = Math.max(input.departments.length - evidenceUploadedCount, 0);
+  const completionStatus: "complete" | "incomplete" =
+    input.departments.length > 0 && evidencePendingCount === 0 ? "complete" : "incomplete";
+
+  return {
+    source_report_batch_id: input.batch.id,
+    report_date: input.batch.report_date,
+    report_created_at: input.batch.created_at,
+    archived_at: new Date().toISOString(),
+    note: input.batch.note,
+    department_count: input.departments.length,
+    item_count: input.items.length,
+    evidence_uploaded_count: evidenceUploadedCount,
+    evidence_pending_count: evidencePendingCount,
+    completion_status: completionStatus,
+    departments: input.departments
+      .map((department) => ({
+        dept_name: department.dept_name,
+        item_count: itemCountByDept.get(department.dept_name) || 0,
+        evidence_uploaded: Boolean(department.evidence_uploaded_at),
+        evidence_uploaded_at: department.evidence_uploaded_at
+      }))
+      .sort((left, right) => left.dept_name.localeCompare(right.dept_name, "th")),
+    evidence_files: input.departments
+      .filter((department) => Boolean(department.evidence_file_url))
+      .map((department) => ({
+        dept_name: department.dept_name,
+        evidence_file_url: department.evidence_file_url as string,
+        evidence_uploaded_at: department.evidence_uploaded_at
+      })),
+    source_deleted: Boolean(input.sourceDeleted),
+    source_deleted_at: input.sourceDeleted ? new Date().toISOString() : null
+  };
+}
+
 function normalizeDateFilter(value: string | undefined) {
   if (!value) {
     return "";
   }
 
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+export async function archiveReportBatches(input: {
+  batchIds?: string[];
+  markSourceDeleted?: boolean;
+} = {}) {
+  if (!hasSupabaseAdminEnv()) {
+    throw new Error("ระบบยังไม่ได้ตั้งค่า Supabase");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  let batchesQuery = supabase.from("report_batches").select("id, report_date, created_at, note").order("report_date", { ascending: false });
+
+  if (input.batchIds && input.batchIds.length > 0) {
+    batchesQuery = batchesQuery.in("id", input.batchIds);
+  }
+
+  const batchesResult = await batchesQuery;
+
+  if (batchesResult.error) {
+    throw new Error(`โหลดรอบรายงานเพื่อจัดเก็บ archive ไม่สำเร็จ: ${batchesResult.error.message}`);
+  }
+
+  const batches = (batchesResult.data as ReportBatchRow[] | null) || [];
+
+  if (batches.length === 0) {
+    return { archivedCount: 0 };
+  }
+
+  const batchIds = batches.map((batch) => batch.id);
+  const [departmentsResult, itemsResult] = await Promise.all([
+    supabase
+      .from("report_batch_departments")
+      .select("id, report_batch_id, dept_name, evidence_file_url, evidence_uploaded_at")
+      .in("report_batch_id", batchIds),
+    supabase.from("report_batch_items").select("id, report_batch_id, dept_name, ticket_id").in("report_batch_id", batchIds)
+  ]);
+
+  if (departmentsResult.error) {
+    throw new Error(`โหลดฝ่ายเพื่อจัดเก็บ archive ไม่สำเร็จ: ${departmentsResult.error.message}`);
+  }
+
+  if (itemsResult.error) {
+    throw new Error(`โหลดรายการเรื่องเพื่อจัดเก็บ archive ไม่สำเร็จ: ${itemsResult.error.message}`);
+  }
+
+  const departments = (departmentsResult.data as ReportBatchDepartmentRow[] | null) || [];
+  const items = (itemsResult.data as ReportBatchItemRow[] | null) || [];
+  const archiveRows = batches.map((batch) =>
+    buildArchivePayload({
+      batch,
+      departments: departments.filter((department) => department.report_batch_id === batch.id),
+      items: items.filter((item) => item.report_batch_id === batch.id),
+      sourceDeleted: input.markSourceDeleted
+    })
+  );
+
+  const upsertResult = await supabase.from("report_archives").upsert(archiveRows, {
+    onConflict: "source_report_batch_id"
+  });
+
+  if (upsertResult.error) {
+    throw new Error(`บันทึก report archive ไม่สำเร็จ: ${upsertResult.error.message}`);
+  }
+
+  return { archivedCount: archiveRows.length };
 }
 
 export async function getReportPageData(filters: ReportPageFilters = {}): Promise<ReportPageData> {
@@ -300,7 +467,24 @@ export async function getReportPageData(filters: ReportPageFilters = {}): Promis
       batchesQuery = batchesQuery.lte("report_date", toDate);
     }
 
-    const [pendingCountResult, unassignedCountResult, pendingDepartmentsResult, batchesResult] = await Promise.all([
+    let archivesQuery = supabase
+      .from("report_archives")
+      .select(
+        "id, source_report_batch_id, report_date, report_created_at, archived_at, note, department_count, item_count, evidence_uploaded_count, evidence_pending_count, completion_status, departments, evidence_files, source_deleted, source_deleted_at"
+      )
+      .order("report_date", { ascending: false })
+      .order("archived_at", { ascending: false })
+      .limit(250);
+
+    if (fromDate) {
+      archivesQuery = archivesQuery.gte("report_date", fromDate);
+    }
+
+    if (toDate) {
+      archivesQuery = archivesQuery.lte("report_date", toDate);
+    }
+
+    const [pendingCountResult, unassignedCountResult, pendingDepartmentsResult, batchesResult, archivesResult] = await Promise.all([
       supabase.from("tickets").select("ticket_id", { count: "exact", head: true }).not("state", "in", closedFilter),
       supabase
         .from("tickets")
@@ -308,7 +492,8 @@ export async function getReportPageData(filters: ReportPageFilters = {}): Promis
         .not("state", "in", closedFilter)
         .or("dept_list.is.null,dept_list.eq.{}"),
       supabase.rpc("dashboard_pending_by_department"),
-      batchesQuery
+      batchesQuery,
+      archivesQuery
     ]);
 
     if (pendingCountResult.error) {
@@ -327,7 +512,12 @@ export async function getReportPageData(filters: ReportPageFilters = {}): Promis
       throw new Error(`โหลดรอบรายงานไม่สำเร็จ: ${batchesResult.error.message}`);
     }
 
+    if (archivesResult.error) {
+      throw new Error(`โหลดประวัติรอบรายงานไม่สำเร็จ: ${archivesResult.error.message}`);
+    }
+
     const batches = (batchesResult.data as ReportBatchRow[] | null) || [];
+    const archives = (archivesResult.data as ReportArchiveRow[] | null) || [];
     const batchIds = batches.map((batch) => batch.id);
 
     let departments: ReportBatchDepartmentRow[] = [];
@@ -413,6 +603,65 @@ export async function getReportPageData(filters: ReportPageFilters = {}): Promis
           }
 
           return right.report_date.localeCompare(left.report_date) || right.created_at.localeCompare(left.created_at);
+        }),
+      archives: archives
+        .map((archive) => ({
+          id: archive.id,
+          sourceReportBatchId: archive.source_report_batch_id,
+          reportDate: archive.report_date,
+          reportCreatedAt: archive.report_created_at,
+          archivedAt: archive.archived_at,
+          note: archive.note,
+          departmentCount: archive.department_count,
+          itemCount: archive.item_count,
+          evidenceUploadedCount: archive.evidence_uploaded_count,
+          evidencePendingCount: archive.evidence_pending_count,
+          completionStatus: archive.completion_status,
+          departments: archive.departments.map((department) => ({
+            deptName: department.dept_name,
+            itemCount: department.item_count,
+            evidenceUploaded: department.evidence_uploaded,
+            evidenceUploadedAt: department.evidence_uploaded_at
+          })),
+          evidenceFiles: archive.evidence_files.map((file) => ({
+            deptName: file.dept_name,
+            evidenceFileUrl: file.evidence_file_url,
+            evidenceUploadedAt: file.evidence_uploaded_at
+          })),
+          sourceDeleted: archive.source_deleted,
+          sourceDeletedAt: archive.source_deleted_at
+        }))
+        .filter((archive) => {
+          if (archiveStatus === "complete") {
+            return archive.departmentCount > 0 && archive.evidencePendingCount === 0;
+          }
+
+          if (archiveStatus === "pending") {
+            return archive.evidencePendingCount > 0;
+          }
+
+          return true;
+        })
+        .sort((left, right) => {
+          if (archiveSort === "report_date_asc") {
+            return left.reportDate.localeCompare(right.reportDate) || left.archivedAt.localeCompare(right.archivedAt);
+          }
+
+          if (archiveSort === "created_at_desc") {
+            return right.archivedAt.localeCompare(left.archivedAt);
+          }
+
+          if (archiveSort === "item_count_desc") {
+            return right.itemCount - left.itemCount || right.reportDate.localeCompare(left.reportDate);
+          }
+
+          if (archiveSort === "progress_asc") {
+            const leftProgress = left.departmentCount > 0 ? Math.round((left.evidenceUploadedCount / left.departmentCount) * 100) : 0;
+            const rightProgress = right.departmentCount > 0 ? Math.round((right.evidenceUploadedCount / right.departmentCount) * 100) : 0;
+            return leftProgress - rightProgress || right.reportDate.localeCompare(left.reportDate);
+          }
+
+          return right.reportDate.localeCompare(left.reportDate) || right.archivedAt.localeCompare(left.archivedAt);
         }),
       filters: {
         status: archiveStatus,

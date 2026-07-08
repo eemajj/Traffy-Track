@@ -60,8 +60,12 @@ export type TicketHistoryInsert = {
 export type ImportSummary = {
   filename: string;
   totalRows: number;
+  processedRows: number;
+  duplicateRows: number;
   newTickets: number;
+  reopenedTickets: number;
   changedTickets: number;
   unchangedTickets: number;
+  changedFields: number;
   importBatchId: string;
 };

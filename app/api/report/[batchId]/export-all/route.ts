@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { buildReportDepartmentExcelFilename, buildReportDepartmentWorkbookBuffer } from "@/lib/report-excel";
 import { getReportBatchDepartmentEvidenceStatuses, getReportDepartmentExportData } from "@/lib/report";
-import { REPORT_EXPORT_BUCKET, sanitizeStorageSegment, uploadBufferAndCreateSignedDownload } from "@/lib/storage";
+import {
+  REPORT_EXPORT_BUCKET,
+  REPORT_EXPORT_MAX_BYTES,
+  sanitizeStorageSegment,
+  uploadBufferAndCreateSignedDownload
+} from "@/lib/storage";
 import { createZipBuffer } from "@/lib/zip";
 
 export const runtime = "nodejs";
@@ -87,7 +92,8 @@ export async function GET(
     path: objectPath,
     buffer: zipBuffer,
     contentType: "application/zip",
-    filename
+    filename,
+    fileSizeLimit: REPORT_EXPORT_MAX_BYTES
   });
 
   return NextResponse.redirect(signedUrl);

@@ -9,6 +9,7 @@ import {
 } from "@/lib/import/types";
 import { normalizeCsvRow, normalizeTicket, validateCsvColumns } from "@/lib/import/normalize";
 import { IMPORT_BUCKET } from "@/lib/storage";
+import { isClosedTicketState } from "@/lib/tickets";
 
 const UPSERT_CHUNK_SIZE = 500;
 const SELECT_CHUNK_SIZE = 500;
@@ -51,6 +52,24 @@ function areTimestampValuesEqual(left: string | null, right: string | null) {
   return leftTime === rightTime;
 }
 
+function dedupeTicketsById(ticketRecords: TicketRecord[]) {
+  const dedupedMap = new Map<string, TicketRecord>();
+  let duplicateRows = 0;
+
+  for (const ticket of ticketRecords) {
+    if (dedupedMap.has(ticket.ticket_id)) {
+      duplicateRows += 1;
+    }
+
+    dedupedMap.set(ticket.ticket_id, ticket);
+  }
+
+  return {
+    ticketRecords: [...dedupedMap.values()],
+    duplicateRows
+  };
+}
+
 export async function processImportCsv(file: File): Promise<ImportSummary> {
   const filename = file.name || "import.csv";
   const text = await file.text();
@@ -82,22 +101,39 @@ export async function processImportCsvText(text: string, filename: string): Prom
     skipEmptyLines: "greedy"
   });
 
-  if (parsed.errors.length > 0) {
-    const firstError = parsed.errors[0];
+  const blockingParseErrors = parsed.errors.filter((error) => {
+    const errorType = (error as { type?: string }).type;
+    return errorType !== "FieldMismatch";
+  });
+
+  if (blockingParseErrors.length > 0) {
+    const firstError = blockingParseErrors[0];
     throw new Error(`CSV parse error at row ${firstError.row}: ${firstError.message}`);
   }
 
-  validateCsvColumns(parsed.meta.fields || []);
+  if (parsed.errors.length > 0) {
+    console.warn("CSV import continued with row-level field mismatches", {
+      filename,
+      mismatchCount: parsed.errors.length,
+      firstMismatch: parsed.errors[0]
+    });
+  }
+
+  const columnMap = validateCsvColumns(parsed.meta.fields || []);
 
   const normalizedRows = parsed.data
-    .map((row: Record<string, string>) => normalizeCsvRow(row))
+    .map((row: Record<string, string>) => normalizeCsvRow(row, columnMap))
     .filter((row) => row.ticket_id.trim().length > 0);
 
   if (normalizedRows.length === 0) {
     throw new Error("CSV does not contain any valid rows");
   }
 
-  const ticketRecords = normalizedRows.map((row) => normalizeTicket(row));
+  const normalizedTicketRecords = normalizedRows.map((row) => normalizeTicket(row));
+  const {
+    ticketRecords,
+    duplicateRows
+  } = dedupeTicketsById(normalizedTicketRecords);
   const uniqueTicketIds = [...new Set(ticketRecords.map((row) => row.ticket_id))];
   const supabase = createSupabaseAdminClient();
 
@@ -105,7 +141,7 @@ export async function processImportCsvText(text: string, filename: string): Prom
     .from("import_batches")
     .insert({
       filename,
-      total_rows: ticketRecords.length,
+      total_rows: normalizedTicketRecords.length,
       new_tickets: 0,
       changed_tickets: 0,
       unchanged_tickets: 0,
@@ -142,8 +178,10 @@ export async function processImportCsvText(text: string, filename: string): Prom
     }
 
     let newTickets = 0;
+    let reopenedTickets = 0;
     let changedTickets = 0;
     let unchangedTickets = 0;
+    let changedFields = 0;
 
     const upsertRows: TicketRecord[] = [];
     const historyRows: TicketHistoryInsert[] = [];
@@ -178,6 +216,8 @@ export async function processImportCsvText(text: string, filename: string): Prom
         });
       }
 
+      const isReopenedTicket = isClosedTicketState(existing.state || null) && Boolean(ticket.state) && !isClosedTicketState(ticket.state);
+
       if ((existing.org_response || null) !== ticket.org_response) {
         fieldChanges.push({
           changed_field: "org_response",
@@ -208,6 +248,7 @@ export async function processImportCsvText(text: string, filename: string): Prom
       }
 
       changedTickets += 1;
+      changedFields += fieldChanges.length;
       upsertRows.push(ticket);
 
       for (const change of fieldChanges) {
@@ -216,6 +257,18 @@ export async function processImportCsvText(text: string, filename: string): Prom
           changed_field: change.changed_field,
           old_value: change.old_value,
           new_value: change.new_value,
+          import_batch_id: importBatchId
+        });
+      }
+
+      if (isReopenedTicket) {
+        reopenedTickets += 1;
+        changedFields += 1;
+        historyRows.push({
+          ticket_id: ticket.ticket_id,
+          changed_field: "reopened",
+          old_value: stringifyValue(existing.state),
+          new_value: stringifyValue(ticket.state),
           import_batch_id: importBatchId
         });
       }
@@ -257,10 +310,14 @@ export async function processImportCsvText(text: string, filename: string): Prom
 
     return {
       filename,
-      totalRows: ticketRecords.length,
+      totalRows: normalizedTicketRecords.length,
+      processedRows: ticketRecords.length,
+      duplicateRows,
       newTickets,
+      reopenedTickets,
       changedTickets,
       unchangedTickets,
+      changedFields,
       importBatchId
     };
   } catch (error) {
