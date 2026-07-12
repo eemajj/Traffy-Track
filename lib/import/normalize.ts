@@ -1,4 +1,5 @@
 import { CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
+import { parseCoordinates } from "@/lib/coordinates";
 import { getSafeHttpsUrl } from "@/lib/safe-url";
 
 type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
@@ -64,20 +65,6 @@ function parseInteger(value: string | undefined) {
 
   const parsed = Number.parseInt(normalized, 10);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-function parseCoords(value: string | undefined) {
-  const normalized = cleanValue(value);
-  if (!normalized) {
-    return { lat: null, lng: null };
-  }
-
-  const parts = normalized.split(",").map((part) => Number.parseFloat(part.trim()));
-  if (parts.length !== 2 || parts.some((part) => Number.isNaN(part))) {
-    return { lat: null, lng: null };
-  }
-
-  return { lat: parts[0], lng: parts[1] };
 }
 
 export function analyzeCsvColumns(columns: string[]) {
@@ -176,7 +163,7 @@ export function deriveDepartmentList(orgList: string[]) {
 export function normalizeTicket(row: CsvRow): TicketRecord {
   const orgList = parseOrgList(row.org_response);
   const deptList = deriveDepartmentList(orgList);
-  const coords = parseCoords(row.coords);
+  const coords = parseCoordinates(row.coords);
 
   return {
     ticket_id: row.ticket_id.trim(),

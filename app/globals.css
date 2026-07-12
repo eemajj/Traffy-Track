@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+.complaint-map-shell {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+}
+
+.complaint-map {
+  min-height: 34rem;
+  width: 100%;
+  z-index: 0;
+}
+
+.leaflet-container {
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #ffffff;
+}
+
+.leaflet-popup-content {
+  margin: 14px 16px;
+}
+
+@media (max-width: 640px) {
+  .complaint-map {
+    min-height: 28rem;
+  }
+}
+
 :root {
   color-scheme: light;
   --bg: #f7f9fc;

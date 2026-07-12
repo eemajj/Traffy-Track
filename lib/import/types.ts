@@ -93,6 +93,12 @@ export type ImportPreview = {
   duplicateTicketIdRows: number;
   invalidTimestampRows: number;
   invalidCoordsRows: number;
+  missingCoordinateRows: number;
+  invalidStateRows: number;
+  blankOrgResponseRows: number;
+  sampledExistingTicketRows: number;
+  sampledNewTicketRows: number;
+  sampledChangedTicketRows: number;
   parseWarnings: string[];
   canImport: boolean;
 };

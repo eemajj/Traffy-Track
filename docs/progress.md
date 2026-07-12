@@ -125,6 +125,13 @@
 ## Not Started Yet
 - งาน security/reliability จาก audit 2026-07-11: apply และ verify RLS/revoke กับ project ที่ยืนยัน environment แล้ว
 - งาน deploy: apply และ smoke-test migration `20260711143000_lock_down_public_api.sql` กับ `20260712100000_import_atomic_apply.sql` บน staging/production
+- Deployment baseline ถูก push แล้วที่ branch `agent/prepare-deploy-baseline`; เมื่อขอ “Deploy Version ใหม่” ให้ใช้ branch/PR นี้เป็นจุดเริ่มต้น และไม่รวมฟีเจอร์ Phase ถัดไปโดยอัตโนมัติ
+- ฟีเจอร์ Phase ถัดไปต้องพัฒนาใน branch แยกชื่อ `feature/<short-name>` และห้ามแก้บน deployment baseline โดยตรง
+- สร้าง remote branch สำหรับ Phase 2 แล้ว: `feature/traffy-track-v2` แตกจาก deployment baseline
+- Roadmap V2: V2.1 แผนที่ → V2.2 data quality/แนะนำฝ่าย → V2.3 สิทธิ์/audit log → V2.4 analytics
+- ตัด V2.2 เดิม (SLA) และ V2.3 เดิม (แจ้งเตือน) ออกจากแผนพัฒนาปัจจุบัน
+- แก้ V2.1 map: พบว่าพิกัดในฐานข้อมูลเป็น `null` ทั้งหมด เพราะ CSV CityData ส่ง `coords` เป็น longitude,latitude; แก้ parser, เพิ่ม regression test และ backfill เฉพาะพิกัดที่ว่างสำเร็จ 13,974 เคส
+- เริ่ม V2.2 data quality: import preview ตรวจพิกัดว่าง/ผิด, สถานะว่าง, หน่วยงานว่าง และเทียบตัวอย่างกับ tickets เดิมเพื่อสรุป new/existing/changed ก่อนยืนยัน
 - งาน reliability ระยะถัดไป: durable queue, report immutable snapshot, paginated export และ restore drill
 - ยังไม่ได้ทดสอบ import ซ้ำด้วยไฟล์ล่าสุด `citydata เขตทวีวัฒนา 2026-07-06 23-12-38.csv` เพราะไฟล์นี้ไม่อยู่ใน workspace
 - ถ้ามี feedback จากผู้ใช้ปลายทาง ควรตรวจรูปแบบ cell/print layout ของ Excel จาก `formTF.xlsx` เพิ่ม

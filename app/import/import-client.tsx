@@ -35,6 +35,12 @@ type ImportPreview = {
   duplicateTicketIdRows: number;
   invalidTimestampRows: number;
   invalidCoordsRows: number;
+  missingCoordinateRows: number;
+  invalidStateRows: number;
+  blankOrgResponseRows: number;
+  sampledExistingTicketRows: number;
+  sampledNewTicketRows: number;
+  sampledChangedTicketRows: number;
   parseWarnings: string[];
   canImport: boolean;
 };
@@ -218,6 +224,18 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
 
     if (preview.invalidCoordsRows > 0) {
       warnings.push(`พบพิกัดที่อ่านไม่ได้ในตัวอย่าง ${formatNumber(preview.invalidCoordsRows)} แถว`);
+    }
+
+    if (preview.missingCoordinateRows > 0) {
+      warnings.push(`ไม่มีพิกัดในตัวอย่าง ${formatNumber(preview.missingCoordinateRows)} แถว จุดเหล่านี้จะไม่ปรากฏบนแผนที่`);
+    }
+
+    if (preview.invalidStateRows > 0) {
+      warnings.push(`ไม่มีสถานะในตัวอย่าง ${formatNumber(preview.invalidStateRows)} แถว ควรตรวจสอบก่อนนำเข้า`);
+    }
+
+    if (preview.blankOrgResponseRows > 0) {
+      warnings.push(`ไม่มีหน่วยงาน/ฝ่ายในตัวอย่าง ${formatNumber(preview.blankOrgResponseRows)} แถว`);
     }
 
     return [...warnings, ...preview.parseWarnings];
@@ -577,6 +595,21 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
             <div className="rounded-2xl border border-border bg-surface px-4 py-3">
               <p className="text-sm text-muted">อ่านเพื่อ preview</p>
               <p className="mt-1 text-2xl font-semibold text-ink">{formatBytes(preview.bytesRead)}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-success/25 bg-success/10 px-4 py-3">
+              <p className="text-sm text-success">เรื่องใหม่ในตัวอย่าง</p>
+              <p className="mt-1 text-2xl font-semibold text-success">{formatNumber(preview.sampledNewTicketRows)}</p>
+            </div>
+            <div className="rounded-2xl border border-brand/20 bg-brand/5 px-4 py-3">
+              <p className="text-sm text-brand">เรื่องเดิมในตัวอย่าง</p>
+              <p className="mt-1 text-2xl font-semibold text-brand">{formatNumber(preview.sampledExistingTicketRows)}</p>
+            </div>
+            <div className="rounded-2xl border border-warning/25 bg-warning/10 px-4 py-3">
+              <p className="text-sm text-warning">คาดว่าเปลี่ยนในตัวอย่าง</p>
+              <p className="mt-1 text-2xl font-semibold text-warning">{formatNumber(preview.sampledChangedTicketRows)}</p>
             </div>
           </div>
 

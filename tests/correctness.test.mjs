@@ -4,6 +4,7 @@ import test from "node:test";
 import { dedupeTicketsById } from "../lib/import/dedupe.ts";
 import { getBangkokCurrentMonthRange, getBangkokTodayValue } from "../lib/report-date.ts";
 import { getSafeHttpsUrl } from "../lib/safe-url.ts";
+import { parseCoordinates } from "../lib/coordinates.ts";
 
 test("duplicate tickets keep the first CSV row", () => {
   const result = dedupeTicketsById([
@@ -47,4 +48,11 @@ test("external photo URLs only allow canonical HTTPS links", () => {
   assert.equal(getSafeHttpsUrl("http://images.example.test/photo.jpg"), null);
   assert.equal(getSafeHttpsUrl("https://user:secret@images.example.test/photo.jpg"), null);
   assert.equal(getSafeHttpsUrl("not a url"), null);
+});
+
+test("CityData longitude,latitude coordinates normalize to latitude,longitude", () => {
+  const coords = parseCoordinates("100.33389,13.76195");
+
+  assert.equal(coords.lat, 13.76195);
+  assert.equal(coords.lng, 100.33389);
 });

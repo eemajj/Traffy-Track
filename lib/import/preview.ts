@@ -1,9 +1,10 @@
 import Papa from "papaparse";
 
-import { analyzeCsvColumns, normalizeCsvRow } from "@/lib/import/normalize";
+import { analyzeCsvColumns, normalizeCsvRow, normalizeTicket } from "@/lib/import/normalize";
 import type { ImportPreview } from "@/lib/import/types";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { IMPORT_BUCKET } from "@/lib/storage";
+import { parseCoordinates } from "@/lib/coordinates";
 
 const PREVIEW_BYTES = 512 * 1024;
 const PREVIEW_MAX_ROWS = 300;
@@ -30,8 +31,16 @@ function isInvalidCoords(value: string | undefined) {
     return false;
   }
 
-  const parts = normalized.split(",").map((part) => Number.parseFloat(part.trim()));
-  return parts.length !== 2 || parts.some((part) => Number.isNaN(part));
+  const coords = parseCoordinates(normalized);
+  return coords.lat === null || coords.lng === null;
+}
+
+function areTimestampValuesEqual(left: string | null, right: string | null) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  const leftTime = new Date(left).getTime();
+  const rightTime = new Date(right).getTime();
+  return Number.isNaN(leftTime) || Number.isNaN(rightTime) ? left === right : leftTime === rightTime;
 }
 
 function estimateRows(input: {
@@ -98,6 +107,12 @@ export async function previewImportCsvFromStorage(input: {
       duplicateTicketIdRows: 0,
       invalidTimestampRows: 0,
       invalidCoordsRows: 0,
+      missingCoordinateRows: 0,
+      invalidStateRows: 0,
+      blankOrgResponseRows: 0,
+      sampledExistingTicketRows: 0,
+      sampledNewTicketRows: 0,
+      sampledChangedTicketRows: 0,
       parseWarnings,
       canImport: false
     };
@@ -108,9 +123,15 @@ export async function previewImportCsvFromStorage(input: {
   let duplicateTicketIdRows = 0;
   let invalidTimestampRows = 0;
   let invalidCoordsRows = 0;
+  let missingCoordinateRows = 0;
+  let invalidStateRows = 0;
+  let blankOrgResponseRows = 0;
+
+  const normalizedRows = [];
 
   for (const rawRow of sampledRows) {
     const row = normalizeCsvRow(rawRow, columnAnalysis.columnMap);
+    normalizedRows.push(normalizeTicket(row));
     const ticketId = row.ticket_id.trim();
 
     if (!ticketId) {
@@ -127,6 +148,55 @@ export async function previewImportCsvFromStorage(input: {
 
     if (isInvalidCoords(row.coords)) {
       invalidCoordsRows += 1;
+    } else if (!row.coords.trim()) {
+      missingCoordinateRows += 1;
+    }
+
+    if (!row.state.trim()) {
+      invalidStateRows += 1;
+    }
+
+    if (!row.org_response.trim()) {
+      blankOrgResponseRows += 1;
+    }
+  }
+
+  const ticketIds = normalizedRows.map((row) => row.ticket_id).filter(Boolean);
+  let sampledExistingTicketRows = 0;
+  let sampledNewTicketRows = 0;
+  let sampledChangedTicketRows = 0;
+
+  if (ticketIds.length > 0) {
+    const existingResult = await supabase
+      .from("tickets")
+      .select("ticket_id, state, org_response, last_activity, star")
+      .in("ticket_id", ticketIds);
+
+    if (existingResult.error) {
+      throw new Error(`ตรวจผลกระทบกับข้อมูลเดิมไม่สำเร็จ: ${existingResult.error.message}`);
+    }
+
+    const existingById = new Map(
+      ((existingResult.data as Array<{ ticket_id: string; state: string | null; org_response: string | null; last_activity: string | null; star: number | null }> | null) || [])
+        .map((row) => [row.ticket_id, row])
+    );
+
+    for (const ticket of normalizedRows) {
+      const existing = existingById.get(ticket.ticket_id);
+      if (!existing) {
+        sampledNewTicketRows += 1;
+        continue;
+      }
+
+      sampledExistingTicketRows += 1;
+      if (
+        (existing.state || null) !== ticket.state ||
+        (existing.org_response || null) !== ticket.org_response ||
+        !areTimestampValuesEqual(existing.last_activity, ticket.last_activity) ||
+        (existing.star ?? null) !== ticket.star
+      ) {
+        sampledChangedTicketRows += 1;
+      }
     }
   }
 
@@ -144,6 +214,12 @@ export async function previewImportCsvFromStorage(input: {
     duplicateTicketIdRows,
     invalidTimestampRows,
     invalidCoordsRows,
+    missingCoordinateRows,
+    invalidStateRows,
+    blankOrgResponseRows,
+    sampledExistingTicketRows,
+    sampledNewTicketRows,
+    sampledChangedTicketRows,
     parseWarnings,
     canImport: columnAnalysis.missingRequiredColumns.length === 0 && blankTicketIdRows < sampledRows.length
   };

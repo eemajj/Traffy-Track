@@ -343,3 +343,32 @@
   - `http://127.0.0.1:3000`
   - PID ล่าสุดที่เห็น: `23376`
   - ถ้าพรุ่งนี้ต่อแล้ว port ใช้ไม่ได้ ให้เช็กด้วย `lsof -nP -iTCP:3000 -sTCP:LISTEN` แล้ว restart `npm run start`
+
+## Deployment Baseline — 2026-07-12
+- เวอร์ชันปัจจุบันถูกเตรียมเป็น baseline สำหรับ deploy อาทิตย์หน้า
+- Git branch: `agent/prepare-deploy-baseline`
+- Remote: `origin` (`eemajj/Traffy-Track`)
+- PR: สร้างจาก branch นี้ก่อน merge เข้า `main`
+- เมื่อผู้ใช้ขอว่า “Deploy Version ใหม่” ให้เริ่มจาก baseline branch/PR นี้ ตรวจ migration และทำ staging smoke test ก่อน deploy production
+- ห้ามนำฟีเจอร์ Phase ถัดไป เช่น แผนที่จุดร้องเรียน มาปนกับ deployment baseline นี้ เว้นแต่ผู้ใช้ระบุให้รวม
+- ขั้นตอน deploy ที่ต้องทำ: review PR → apply migrations บน staging → smoke test → merge `main` → deploy production → health check
+
+## TraffyTrack V2 Roadmap — 2026-07-12
+- V2 branch: `feature/traffy-track-v2`
+- V2.1: แผนที่จุดร้องเรียนจาก `lat/lng`, filter, marker detail และสถานะพิกัด
+- V2.2: ตรวจเคสซ้ำ, ตรวจคุณภาพข้อมูล, แนะนำฝ่าย และแนะนำความเร่งด่วน
+- V2.3: role/permission, การมองเห็นข้อมูลรายฝ่าย และ audit log
+- V2.4: dashboard วิเคราะห์แนวโน้ม พื้นที่หนาแน่น และเวลาเฉลี่ยปิดเคส
+- ตัดออกจากแผนปัจจุบัน: SLA/การตามงานอัตโนมัติ และระบบแจ้งเตือน
+- ลำดับนี้เป็นแผนพัฒนา V2 เท่านั้น และไม่กระทบ deployment baseline ของ V1
+- แก้ parsing พิกัด CityData: CSV ใช้รูปแบบ `longitude,latitude`; utility `lib/coordinates.ts` จะแปลงเป็น `lat/lng` ให้ถูกต้อง
+- Backfill วันที่ 2026-07-12: เติมเฉพาะ `lat/lng` ที่ว่างจาก `citydata เขตทวีวัฒนา 2026-07-06 15-27-17.csv` สำเร็จ 13,974 tickets โดยไม่แตะสถานะ รายละเอียด หรือ history
+- V2.2 เริ่มแล้ว: import preview แยกพิกัดว่าง/พิกัดผิด, สถานะว่าง, หน่วยงานว่าง และสรุปตัวอย่างเรื่องใหม่/เรื่องเดิม/เรื่องที่คาดว่าเปลี่ยนก่อนยืนยัน import
+
+## Branch Protocol — Future Development
+- `agent/prepare-deploy-baseline` เป็น deployment baseline และควรรักษาให้เสถียร ห้ามใส่ฟีเจอร์ Phase ถัดไปโดยตรง
+- งานฟีเจอร์ใหม่ทุกชิ้นต้องเริ่มจาก branch แยกชื่อ `feature/<short-name>` เช่น `feature/complaint-map`
+- ถ้า baseline ยังไม่ merge เข้า `main` ให้แตก feature branch จาก `agent/prepare-deploy-baseline`; หลัง baseline merge แล้ว ให้แตกจาก `main` ที่ตรงกับ baseline
+- การรวม feature กลับต้องผ่านการ review, typecheck, lint, test และ build ก่อน
+- ถ้าผู้ใช้ขอ “Deploy Version ใหม่” ให้ใช้ baseline/main ที่ผ่านการยืนยัน ไม่ดึง feature branch ที่ยังไม่เสร็จเข้ามาเอง
+- Phase 2 branch ที่สร้างแล้ว: `feature/traffy-track-v2` โดยแตกจาก commit baseline `1735e18`
