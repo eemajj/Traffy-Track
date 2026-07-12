@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 
 import { logoutAction } from "@/app/login/actions";
 import { NavigationProgress, PendingNavLink } from "@/components/navigation-feedback";
+import { getCurrentSessionClaims } from "@/lib/auth";
 import { appNavigation } from "@/lib/routes";
 
 type AppShellProps = {
@@ -10,7 +11,10 @@ type AppShellProps = {
   children: ReactNode;
 };
 
-export function AppShell({ title, description, children }: AppShellProps) {
+export async function AppShell({ title, description, children }: AppShellProps) {
+  const session = await getCurrentSessionClaims();
+  const navigationItems = appNavigation.filter((item) => session && item.roles.includes(session.role));
+
   return (
     <div className="min-h-screen bg-bg text-ink">
       <NavigationProgress />
@@ -26,7 +30,12 @@ export function AppShell({ title, description, children }: AppShellProps) {
               <p className="max-w-3xl text-sm leading-6 text-muted">{description}</p>
             </div>
             <nav className="flex flex-wrap gap-2">
-              {appNavigation.map((item) => (
+              {session ? (
+                <span className="inline-flex items-center rounded-full bg-surface px-3 py-2 text-xs font-semibold text-muted">
+                  สิทธิ์: {session.role === "admin" ? "ผู้ดูแลระบบ" : "เจ้าหน้าที่"}
+                </span>
+              ) : null}
+              {navigationItems.map((item) => (
                 <PendingNavLink
                   key={item.href}
                   href={item.href}

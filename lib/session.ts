@@ -1,7 +1,15 @@
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 
-const SESSION_TOKEN_VERSION = "v1";
+const SESSION_TOKEN_VERSION = "v2";
 const SESSION_SECRET_MIN_BYTES = 32;
+
+export type SessionRole = "admin" | "operator";
+
+export type SessionClaims = {
+  version: "v1" | "v2";
+  role: SessionRole;
+  expiresAt: number;
+};
 
 function getSessionSecret() {
   const secret = process.env.APP_SESSION_SECRET;
@@ -63,37 +71,62 @@ async function signSessionPayload(payload: string) {
   return bytesToBase64Url(new Uint8Array(signature));
 }
 
-export async function createSessionCookieValue(maxAgeSeconds = SESSION_MAX_AGE_SECONDS) {
+export async function createSessionCookieValue(role: SessionRole = "admin", maxAgeSeconds = SESSION_MAX_AGE_SECONDS) {
   const expiresAt = Date.now() + maxAgeSeconds * 1000;
-  const payload = `${SESSION_TOKEN_VERSION}.${expiresAt}`;
+  const payload = `${SESSION_TOKEN_VERSION}.${expiresAt}.${role}`;
   const signature = await signSessionPayload(payload);
 
   return `${payload}.${signature}`;
 }
 
-export async function verifySessionCookieValue(value: string | undefined) {
+export async function getSessionClaims(value: string | undefined): Promise<SessionClaims | null> {
   try {
     getSessionSecret();
   } catch {
-    return false;
+    return null;
   }
 
   if (!value) {
-    return false;
+    return null;
   }
 
-  const [version, expiresAtValue, signature] = value.split(".");
+  const parts = value.split(".");
+  const version = parts[0];
+  const expiresAtValue = parts[1];
+  const isLegacyToken = version === "v1" && parts.length === 3;
+  const isRoleToken = version === SESSION_TOKEN_VERSION && parts.length === 4;
 
-  if (version !== SESSION_TOKEN_VERSION || !expiresAtValue || !signature) {
-    return false;
+  if ((!isLegacyToken && !isRoleToken) || !expiresAtValue) {
+    return null;
   }
 
   const expiresAt = Number.parseInt(expiresAtValue, 10);
 
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-    return false;
+    return null;
   }
 
-  const expectedSignature = await signSessionPayload(`${version}.${expiresAtValue}`);
-  return constantTimeEqual(signature, expectedSignature);
+  const role = isLegacyToken ? "admin" : parts[2];
+  const signature = isLegacyToken ? parts[2] : parts[3];
+
+  if ((role !== "admin" && role !== "operator") || !signature) {
+    return null;
+  }
+
+  const payload = isLegacyToken ? `${version}.${expiresAtValue}` : `${version}.${expiresAtValue}.${role}`;
+  const expectedSignature = await signSessionPayload(payload);
+
+  if (!constantTimeEqual(signature, expectedSignature)) {
+    return null;
+  }
+
+  return {
+    version: isLegacyToken ? "v1" : "v2",
+    role,
+    expiresAt
+  };
+}
+
+export async function verifySessionCookieValue(value: string | undefined) {
+  return Boolean(await getSessionClaims(value));
 }

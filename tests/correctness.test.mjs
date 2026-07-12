@@ -5,6 +5,7 @@ import { dedupeTicketsById } from "../lib/import/dedupe.ts";
 import { getBangkokCurrentMonthRange, getBangkokTodayValue } from "../lib/report-date.ts";
 import { getSafeHttpsUrl } from "../lib/safe-url.ts";
 import { parseCoordinates } from "../lib/coordinates.ts";
+import { createSessionCookieValue, getSessionClaims, verifySessionCookieValue } from "../lib/session.ts";
 
 test("duplicate tickets keep the first CSV row", () => {
   const result = dedupeTicketsById([
@@ -55,4 +56,41 @@ test("CityData longitude,latitude coordinates normalize to latitude,longitude", 
 
   assert.equal(coords.lat, 13.76195);
   assert.equal(coords.lng, 100.33389);
+});
+
+test("signed sessions preserve roles and reject tampering", async () => {
+  const previousSecret = process.env.APP_SESSION_SECRET;
+  process.env.APP_SESSION_SECRET = "test-session-secret-that-is-longer-than-32-bytes";
+
+  try {
+    const token = await createSessionCookieValue("operator", 60);
+    const claims = await getSessionClaims(token);
+
+    assert.equal(claims?.role, "operator");
+    assert.equal(await verifySessionCookieValue(token), true);
+    assert.equal(await verifySessionCookieValue(`${token}tampered`), false);
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.APP_SESSION_SECRET;
+    } else {
+      process.env.APP_SESSION_SECRET = previousSecret;
+    }
+  }
+});
+
+test("signed sessions reject expired tokens", async () => {
+  const previousSecret = process.env.APP_SESSION_SECRET;
+  process.env.APP_SESSION_SECRET = "test-session-secret-that-is-longer-than-32-bytes";
+
+  try {
+    const token = await createSessionCookieValue("admin", -1);
+    assert.equal(await getSessionClaims(token), null);
+    assert.equal(await verifySessionCookieValue(token), false);
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.APP_SESSION_SECRET;
+    } else {
+      process.env.APP_SESSION_SECRET = previousSecret;
+    }
+  }
 });

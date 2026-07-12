@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { getAdminOverview } from "@/lib/admin";
+import { getRecentAuditEvents } from "@/lib/audit";
 import { AdminBackupPanel, AdminWipePanel } from "@/app/admin/admin-client";
 
 export const dynamic = "force-dynamic";
@@ -99,6 +100,18 @@ function getEnvironmentClass(isProduction: boolean) {
   return isProduction ? "bg-danger/10 text-danger" : "bg-brand/10 text-brand";
 }
 
+function formatAuditAction(action: string) {
+  const labels: Record<string, string> = {
+    "backup.export": "สร้าง Backup ZIP",
+    "system.wipe": "ล้างข้อมูลระบบ",
+    "import.queued": "เริ่มงานนำเข้า",
+    "import.completed": "นำเข้าเสร็จสิ้น",
+    "import.failed": "นำเข้าไม่สำเร็จ"
+  };
+
+  return labels[action] || action;
+}
+
 function StorageGauge({ bytes, objectCount }: { bytes: number; objectCount: number }) {
   const percent = getStoragePercent(bytes);
   const tone = getStorageTone(percent);
@@ -126,7 +139,7 @@ function StorageGauge({ bytes, objectCount }: { bytes: number; objectCount: numb
 }
 
 export default async function AdminPage() {
-  const data = await getAdminOverview();
+  const [data, audit] = await Promise.all([getAdminOverview(), getRecentAuditEvents(50)]);
 
   return (
     <AppShell
@@ -312,6 +325,63 @@ export default async function AdminPage() {
 
           <AdminBackupPanel />
           <AdminWipePanel isProduction={data.deployment.isProduction} environmentName={data.deployment.appEnvironment} />
+
+          <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-ink">Audit log</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                  บันทึกการกระทำสำคัญของผู้ดูแลและเจ้าหน้าที่ เพื่อใช้ตรวจสอบเหตุการณ์ย้อนหลัง
+                </p>
+              </div>
+              <span className="w-fit rounded-full bg-surface px-3 py-2 text-xs font-semibold text-muted">ล่าสุด 50 รายการ</span>
+            </div>
+
+            {audit.status === "ready" && audit.events.length > 0 ? (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-border">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+                    <thead className="bg-surface text-xs font-semibold text-muted">
+                      <tr>
+                        <th className="px-4 py-3">เวลา</th>
+                        <th className="px-4 py-3">ผู้ดำเนินการ</th>
+                        <th className="px-4 py-3">การกระทำ</th>
+                        <th className="px-4 py-3">รายการอ้างอิง</th>
+                        <th className="px-4 py-3">ผลลัพธ์</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-white">
+                      {audit.events.map((event) => (
+                        <tr key={event.id} className="motion-row">
+                          <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDateTime(event.occurredAt)}</td>
+                          <td className="px-4 py-3 font-semibold text-ink">
+                            {event.actorRole === "admin" ? "ผู้ดูแลระบบ" : event.actorRole === "operator" ? "เจ้าหน้าที่" : "ระบบ"}
+                          </td>
+                          <td className="px-4 py-3 text-ink">{formatAuditAction(event.action)}</td>
+                          <td className="max-w-[280px] truncate px-4 py-3 font-mono text-xs text-muted" title={event.resourceId || event.resourceType}>
+                            {event.resourceId || event.resourceType}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${event.outcome === "success" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                              {event.outcome === "success" ? "สำเร็จ" : "ไม่สำเร็จ"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : audit.status === "ready" ? (
+              <div className="mt-5 rounded-2xl border border-border bg-surface px-4 py-5 text-sm leading-6 text-muted">
+                ยังไม่มีเหตุการณ์สำคัญ เมื่อมีการนำเข้า สร้าง backup หรือล้างข้อมูล ระบบจะแสดงประวัติที่นี่
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-warning/25 bg-warning/10 px-4 py-4 text-sm leading-6 text-warning">
+                Audit log ยังไม่พร้อมใช้งาน ต้อง apply migration `20260712153000_audit_events.sql` ก่อน
+              </div>
+            )}
+          </section>
         </div>
       )}
     </AppShell>

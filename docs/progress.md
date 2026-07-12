@@ -16,6 +16,9 @@
 - แผน remediation เร่งด่วน: RLS/revoke, auth fail-closed + logout, แก้ open redirect/duplicate/date/URL validation, แล้วจึงทำ import transaction และ backup/restore
 
 ## Done
+- V2.3 role/permission + audit log ผ่านการตรวจแล้ว: แยกสิทธิ์ `admin`/`operator`, รองรับ cookie `v1` เดิมเป็น admin, เพิ่ม admin route/API guard และหน้า Audit log
+- เพิ่ม audit events สำหรับ backup export, system wipe และ import แบบ sync/background รวมผลสำเร็จ/ล้มเหลว
+- V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log fallback ก่อน apply migration
 - Audit remediation patch 2026-07-11: เพิ่ม migration `20260711143000_lock_down_public_api.sql` สำหรับ RLS/revoke anon และ RPC; ยังไม่ apply remote เพราะ project environment และ Supabase access token ยังยืนยันไม่ได้
 - เพิ่ม migration `20260712100000_import_atomic_apply.sql` และเปลี่ยน import ให้ upsert tickets, บันทึก history และปิด batch ใน transaction เดียวผ่าน RPC; ต้อง apply migration ก่อนเปิดใช้งาน import บน environment ที่ใช้งานจริง
 - Audit remediation patch 2026-07-11: บังคับ `APP_SESSION_SECRET` อย่างน้อย 32 bytes โดยไม่ fallback, เพิ่ม logout, ปิด open redirect, ทำ duplicate policy ให้ใช้แถวแรก, ตรึงวันที่ `Asia/Bangkok`, และกรอง URL รูปให้รับเฉพาะ HTTPS
@@ -144,10 +147,17 @@
 5. ทดสอบ flow report + evidence upload บนข้อมูลจริง
 
 ## Next Immediate Step
-- เปิดระบบที่ `http://127.0.0.1:3000` และ login ใหม่ถ้า cookie หมดอายุ
-- ถ้า server ไม่อยู่ ให้รัน `npm run start -- --hostname 127.0.0.1 --port 3000` หลัง `npm run build`
-- ถ้าต้องการปิด QA import ให้เอาไฟล์ล่าสุด `citydata เขตทวีวัฒนา 2026-07-06 23-12-38.csv` มาไว้ใน workspace แล้วทดสอบ import ซ้ำ; คาดหวังว่า `changed_tickets` รอบใหม่ควรลดลงมาก เพราะแก้ timestamp comparison แล้ว
-- ตรวจ Excel ที่ดาวน์โหลดจริงกับผู้ใช้ปลายทางว่าคอลัมน์/รูปแบบตรงกับฟอร์มราชการที่ต้องส่งหรือไม่
+- ทำต่อบน branch `feature/traffy-track-v2`
+- V2.1 แผนที่และ V2.2 Data Quality ถูกตรวจและ push แล้วที่ commit `7b208a5`
+- V2.3 role/permission + audit log ผ่าน checks และ runtime QA แล้ว; ขั้นถัดไปคือ apply migration `20260712153000_audit_events.sql` กับ environment ที่ยืนยันแล้ว
+- หลัง apply migration ให้ smoke-test การเขียน/อ่าน Audit log จาก action จริงแบบ reversible
+- จากนั้นเริ่ม V2.4 analytics ใน branch แยกจาก checkpoint V2.3
+
+## Pause Checkpoint — 2026-07-12
+- กลับมาดำเนินงานต่อและตรวจ V2.3 ครบแล้ว
+- Worktree ปัจจุบันมี role-aware signed session, optional `APP_ADMIN_PASSCODE`, admin route/API guard, audit event helper, audit migration และ Audit log UI ที่ผ่าน checks/runtime QA
+- Compatibility rule: ถ้ายังไม่ตั้ง `APP_ADMIN_PASSCODE`, `APP_PASSCODE` เดิมต้องยัง login เป็น admin ได้ เพื่อไม่ล็อกผู้ใช้เดิมออกจากระบบ
+- ณ จุดพักยังไม่มี dev server เปิดค้างที่ port 3000
 
 ## Open Questions
 - ยังไม่มี open question เชิง business เพิ่มจาก requirement ล่าสุด

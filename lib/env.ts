@@ -1,5 +1,6 @@
 export const env = {
   appPasscode: process.env.APP_PASSCODE || "",
+  appAdminPasscode: process.env.APP_ADMIN_PASSCODE || "",
   authCookieName: process.env.APP_AUTH_COOKIE || "citydata-passcode",
   supabaseUrl: process.env.SUPABASE_URL || "",
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",

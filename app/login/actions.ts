@@ -15,12 +15,19 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
   const configuredPasscode = requireAppPasscode();
   const passcode = String(formData.get("passcode") || "");
   const nextPath = getSafeNextPath(formData.get("next"));
+  const role = env.appAdminPasscode && passcode === env.appAdminPasscode
+    ? "admin"
+    : passcode === configuredPasscode
+      ? env.appAdminPasscode
+        ? "operator"
+        : "admin"
+      : null;
 
-  if (passcode !== configuredPasscode) {
+  if (!role) {
     return { error: "รหัสผ่านไม่ถูกต้อง" };
   }
 
-  const sessionCookieValue = await createSessionCookieValue();
+  const sessionCookieValue = await createSessionCookieValue(role);
 
   cookies().set(env.authCookieName, sessionCookieValue, {
     httpOnly: true,

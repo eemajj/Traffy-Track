@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { verifySessionCookieValue } from "@/lib/session";
+import { getSessionClaims } from "@/lib/session";
 
 const authCookieName = process.env.APP_AUTH_COOKIE || "citydata-passcode";
 
@@ -16,15 +16,19 @@ export async function middleware(request: NextRequest) {
   }
 
   const currentCookie = request.cookies.get(authCookieName)?.value;
-  const isAuthenticated = await verifySessionCookieValue(currentCookie);
+  const session = await getSessionClaims(currentCookie);
 
-  if (isAuthenticated) {
-    return NextResponse.next();
+  if (!session) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", `${pathname}${search}`);
+    return NextResponse.redirect(loginUrl);
   }
 
-  const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("next", `${pathname}${search}`);
-  return NextResponse.redirect(loginUrl);
+  if ((pathname === "/admin" || pathname.startsWith("/admin/")) && session.role !== "admin") {
+    return NextResponse.redirect(new URL("/dashboard?access=denied", request.url));
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

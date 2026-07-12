@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 
 import { env } from "@/lib/env";
-import { verifySessionCookieValue } from "@/lib/session";
+import { getSessionClaims, SessionRole, verifySessionCookieValue } from "@/lib/session";
 
 const DEFAULT_AUTHENTICATED_PATH = "/dashboard";
 const SAFE_REDIRECT_ORIGIN = "https://app.invalid";
@@ -61,6 +61,20 @@ export async function hasValidSessionCookie() {
 
   const cookieStore = cookies();
   return verifySessionCookieValue(cookieStore.get(env.authCookieName)?.value);
+}
+
+export async function getCurrentSessionClaims() {
+  if (!env.appPasscode) {
+    return null;
+  }
+
+  const cookieStore = cookies();
+  return getSessionClaims(cookieStore.get(env.authCookieName)?.value);
+}
+
+export async function hasSessionRole(role: SessionRole) {
+  const claims = await getCurrentSessionClaims();
+  return claims?.role === role;
 }
 
 export function getLoginRedirectPath(nextPath?: string) {
