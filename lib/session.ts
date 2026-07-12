@@ -1,9 +1,20 @@
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 
 const SESSION_TOKEN_VERSION = "v1";
+const SESSION_SECRET_MIN_BYTES = 32;
 
 function getSessionSecret() {
-  return process.env.APP_SESSION_SECRET || process.env.APP_PASSCODE || "";
+  const secret = process.env.APP_SESSION_SECRET;
+
+  if (!secret) {
+    throw new Error("Missing required environment variable: APP_SESSION_SECRET");
+  }
+
+  if (new TextEncoder().encode(secret).byteLength < SESSION_SECRET_MIN_BYTES) {
+    throw new Error(`APP_SESSION_SECRET must be at least ${SESSION_SECRET_MIN_BYTES} bytes`);
+  }
+
+  return secret;
 }
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -57,14 +68,16 @@ export async function createSessionCookieValue(maxAgeSeconds = SESSION_MAX_AGE_S
   const payload = `${SESSION_TOKEN_VERSION}.${expiresAt}`;
   const signature = await signSessionPayload(payload);
 
-  if (!signature) {
-    throw new Error("Missing APP_PASSCODE or APP_SESSION_SECRET");
-  }
-
   return `${payload}.${signature}`;
 }
 
 export async function verifySessionCookieValue(value: string | undefined) {
+  try {
+    getSessionSecret();
+  } catch {
+    return false;
+  }
+
   if (!value) {
     return false;
   }

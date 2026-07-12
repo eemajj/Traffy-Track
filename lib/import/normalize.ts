@@ -1,4 +1,5 @@
 import { CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
+import { getSafeHttpsUrl } from "@/lib/safe-url";
 
 type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
 
@@ -79,7 +80,7 @@ function parseCoords(value: string | undefined) {
   return { lat: parts[0], lng: parts[1] };
 }
 
-export function validateCsvColumns(columns: string[]): CsvColumnMap {
+export function analyzeCsvColumns(columns: string[]) {
   const headerLookup = new Map<string, string>();
 
   for (const column of columns) {
@@ -92,6 +93,7 @@ export function validateCsvColumns(columns: string[]): CsvColumnMap {
 
   const columnMap = {} as CsvColumnMap;
   const missingColumns: RequiredCsvColumn[] = [];
+  const missingOptionalColumns: RequiredCsvColumn[] = [];
 
   for (const column of requiredCsvColumns) {
     const matchedColumn = getAcceptedHeaderKeys(column)
@@ -101,6 +103,8 @@ export function validateCsvColumns(columns: string[]): CsvColumnMap {
     if (!matchedColumn) {
       if (!optionalCsvColumns.has(column)) {
         missingColumns.push(column);
+      } else {
+        missingOptionalColumns.push(column);
       }
       continue;
     }
@@ -108,11 +112,21 @@ export function validateCsvColumns(columns: string[]): CsvColumnMap {
     columnMap[column] = matchedColumn;
   }
 
-  if (missingColumns.length > 0) {
-    throw new Error(`CSV is missing required columns: ${missingColumns.join(", ")}`);
+  return {
+    columnMap,
+    missingRequiredColumns: missingColumns,
+    missingOptionalColumns
+  };
+}
+
+export function validateCsvColumns(columns: string[]): CsvColumnMap {
+  const analysis = analyzeCsvColumns(columns);
+
+  if (analysis.missingRequiredColumns.length > 0) {
+    throw new Error(`CSV is missing required columns: ${analysis.missingRequiredColumns.join(", ")}`);
   }
 
-  return columnMap;
+  return analysis.columnMap;
 }
 
 export function pickCsvRowValue(row: Record<string, string>, column: string | undefined) {
@@ -168,7 +182,7 @@ export function normalizeTicket(row: CsvRow): TicketRecord {
     ticket_id: row.ticket_id.trim(),
     type: cleanValue(row.type),
     comment: cleanValue(row.comment),
-    photo_url: cleanValue(row.photo),
+    photo_url: getSafeHttpsUrl(row.photo),
     address: cleanValue(row.address),
     subdistrict: cleanValue(row.subdistrict),
     district: cleanValue(row.district),

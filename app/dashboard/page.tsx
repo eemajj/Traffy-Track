@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { getDashboardData } from "@/lib/dashboard";
@@ -78,23 +79,23 @@ export default async function DashboardPage() {
       ) : (
         <div className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-5">
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="motion-card rounded-3xl bg-white p-6 shadow-panel" style={{ "--motion-index": 0 } as CSSProperties}>
               <p className="text-sm text-slate-500">เรื่องคงค้างทั้งหมด</p>
               <p className="mt-2 text-3xl font-bold">{formatNumber(data.pendingTicketCount)}</p>
             </section>
-            <section className="rounded-3xl border border-danger/20 bg-danger/5 p-6">
+            <section className="motion-card rounded-3xl border border-danger/20 bg-danger/5 p-6" style={{ "--motion-index": 1 } as CSSProperties}>
               <p className="text-sm text-danger/80">รอจัดฝ่ายรับผิดชอบ</p>
               <p className="mt-2 text-3xl font-bold text-danger">{formatNumber(data.unassignedCount)}</p>
             </section>
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="motion-card rounded-3xl bg-white p-6 shadow-panel" style={{ "--motion-index": 2 } as CSSProperties}>
               <p className="text-sm text-slate-500">เรื่องใหม่รอบล่าสุด</p>
               <p className="mt-2 text-3xl font-bold">{formatNumber(data.latestBatch?.new_tickets ?? 0)}</p>
             </section>
-            <section className="rounded-3xl border border-warning/25 bg-warning/10 p-6">
+            <section className="motion-card rounded-3xl border border-warning/25 bg-warning/10 p-6" style={{ "--motion-index": 3 } as CSSProperties}>
               <p className="text-sm text-warning">เปิดกลับรอบล่าสุด</p>
               <p className="mt-2 text-3xl font-bold text-warning">{formatNumber(data.reopenedTicketCount)}</p>
             </section>
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="motion-card rounded-3xl bg-white p-6 shadow-panel" style={{ "--motion-index": 4 } as CSSProperties}>
               <p className="text-sm text-slate-500">รายการเปลี่ยนสำคัญ</p>
               <p className="mt-2 text-3xl font-bold">{formatNumber(data.actionableChangeCount)}</p>
             </section>
@@ -148,7 +149,7 @@ export default async function DashboardPage() {
                   <p className="text-sm text-slate-500">ยังไม่มีข้อมูลฝ่ายที่มีเรื่องคงค้าง</p>
                 ) : (
                   data.departmentSummary.map((row) => (
-                    <div key={row.dept_name} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <div key={row.dept_name} className="motion-row flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                       <p className="pr-4 text-sm font-medium text-slate-700">{row.dept_name}</p>
                       <span className="rounded-full bg-brand px-3 py-1 text-sm font-semibold text-white">
                         {formatNumber(row.pending_count)}
@@ -171,7 +172,7 @@ export default async function DashboardPage() {
                   <p className="text-sm text-danger/80">ไม่มีเรื่องในหมวดนี้</p>
                 ) : (
                   data.unassignedTickets.map((ticket) => (
-                    <article key={ticket.ticket_id} className="rounded-2xl border border-danger/15 bg-white p-4">
+                    <article key={ticket.ticket_id} className="motion-row rounded-2xl border border-danger/15 bg-white p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="font-mono text-xs text-slate-500">{ticket.ticket_id}</p>

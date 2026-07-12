@@ -78,3 +78,21 @@ export type ImportJob = ImportSummary & {
   importedAt: string;
   completedAt: string | null;
 };
+
+export type ImportPreview = {
+  filename: string;
+  bytesRead: number;
+  fileSize: number | null;
+  sampledRows: number;
+  estimatedRows: number | null;
+  headers: string[];
+  mappedColumns: Partial<Record<RequiredCsvColumn, string>>;
+  missingRequiredColumns: RequiredCsvColumn[];
+  missingOptionalColumns: RequiredCsvColumn[];
+  blankTicketIdRows: number;
+  duplicateTicketIdRows: number;
+  invalidTimestampRows: number;
+  invalidCoordsRows: number;
+  parseWarnings: string[];
+  canImport: boolean;
+};

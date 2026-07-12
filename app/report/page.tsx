@@ -10,6 +10,7 @@ import {
 import { CreateReportSubmitButton } from "@/app/report/create-report-submit-button";
 import { ReportBatchSubmitButton } from "@/app/report/report-batch-submit-button";
 import { getReportPageData } from "@/lib/report";
+import { BANGKOK_TIME_ZONE, getBangkokCurrentMonthRange, getBangkokTodayValue } from "@/lib/report-date";
 
 export const dynamic = "force-dynamic";
 
@@ -24,26 +25,17 @@ type ReportPageProps = {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium"
+    dateStyle: "medium",
+    timeZone: BANGKOK_TIME_ZONE
   }).format(new Date(value));
 }
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: BANGKOK_TIME_ZONE
   }).format(new Date(value));
-}
-
-function getTodayValue() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getCurrentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-  return { start, end };
 }
 
 function formatNumber(value: number) {
@@ -65,7 +57,7 @@ function buildReportHref(params: Record<string, string | number | null | undefin
 
 export default async function ReportPage({ searchParams = {} }: ReportPageProps) {
   const data = await getReportPageData(searchParams);
-  const currentMonth = getCurrentMonthRange();
+  const currentMonth = getBangkokCurrentMonthRange();
 
   return (
     <AppShell
@@ -121,7 +113,7 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                     <input
                       type="date"
                       name="report_date"
-                      defaultValue={getTodayValue()}
+                      defaultValue={getBangkokTodayValue()}
                       required
                       className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-ink outline-none focus:border-brand focus:bg-white focus:shadow-[0_0_0_4px_var(--ring)]"
                     />

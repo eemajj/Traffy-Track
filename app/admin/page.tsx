@@ -69,6 +69,36 @@ function getStorageTone(percent: number) {
   };
 }
 
+function formatImportStatus(status: string) {
+  switch (status) {
+    case "queued":
+      return "รอประมวลผล";
+    case "running":
+      return "กำลังประมวลผล";
+    case "failed":
+      return "ไม่สำเร็จ";
+    default:
+      return "สำเร็จ";
+  }
+}
+
+function getImportStatusClass(status: string) {
+  switch (status) {
+    case "queued":
+      return "bg-brand/10 text-brand";
+    case "running":
+      return "bg-warning/10 text-warning";
+    case "failed":
+      return "bg-danger/10 text-danger";
+    default:
+      return "bg-success/10 text-success";
+  }
+}
+
+function getEnvironmentClass(isProduction: boolean) {
+  return isProduction ? "bg-danger/10 text-danger" : "bg-brand/10 text-brand";
+}
+
 function StorageGauge({ bytes, objectCount }: { bytes: number; objectCount: number }) {
   const percent = getStoragePercent(bytes);
   const tone = getStorageTone(percent);
@@ -122,6 +152,9 @@ export default async function AdminPage() {
                 <p className="mt-2 text-sm leading-6 text-muted">ตรวจล่าสุด {formatDateTime(data.generatedAt)}</p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getEnvironmentClass(data.deployment.isProduction)}`}>
+                  {data.deployment.appEnvironment}
+                </span>
                 <span
                   className={
                     data.database.status === "ok"
@@ -143,6 +176,16 @@ export default async function AdminPage() {
               </div>
             </div>
 
+            {data.deployment.isProduction ? (
+              <div className="mt-5 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm leading-6 text-danger">
+                Environment นี้เป็น production: ตรวจ backup และ preview/staging ให้เรียบร้อยก่อนใช้ action ที่เขียนหรือล้างข้อมูล
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-brand/15 bg-brand/5 px-4 py-3 text-sm leading-6 text-brand">
+                Environment นี้ไม่ใช่ production เหมาะสำหรับทดสอบ feature, import preview, และ checklist ก่อน deploy
+              </div>
+            )}
+
             <div className="mt-6 grid gap-3 lg:grid-cols-3">
               <div className="rounded-2xl bg-surface px-4 py-3">
                 <p className="text-xs font-semibold text-muted">ฐานข้อมูล</p>
@@ -159,6 +202,66 @@ export default async function AdminPage() {
             </div>
           </section>
 
+          <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-ink">Operational attention</h2>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  งานนำเข้าที่กำลังรันหรือไม่สำเร็จจะแสดงตรงนี้ก่อน เพื่อให้ admin เห็นปัญหาโดยไม่ต้องเปิด logs
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
+                  กำลังทำงาน {formatNumber(data.imports.activeCount)}
+                </span>
+                <span className="rounded-full bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
+                  ไม่สำเร็จ {formatNumber(data.imports.failedCount)}
+                </span>
+              </div>
+            </div>
+
+            {data.imports.recentJobs.length === 0 ? (
+              <div className="mt-5 rounded-2xl border border-border bg-surface px-4 py-5 text-sm leading-6 text-muted">
+                ยังไม่มีประวัติการนำเข้า
+              </div>
+            ) : (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-border">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <thead className="bg-surface text-xs font-semibold text-muted">
+                      <tr>
+                        <th className="px-4 py-3">เวลา</th>
+                        <th className="px-4 py-3">ไฟล์</th>
+                        <th className="px-4 py-3">สถานะ</th>
+                        <th className="px-4 py-3 text-right">แถว</th>
+                        <th className="px-4 py-3">ข้อความ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-white">
+                  {data.imports.recentJobs.map((job) => (
+                        <tr key={job.importBatchId} className="motion-row">
+                          <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDateTime(job.importedAt)}</td>
+                          <td className="max-w-[260px] truncate px-4 py-3 font-semibold text-ink" title={job.filename}>
+                            {job.filename}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getImportStatusClass(job.status)}`}>
+                              {formatImportStatus(job.status)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-ink">{formatNumber(job.totalRows)}</td>
+                          <td className="max-w-[360px] px-4 py-3 text-muted">
+                            {job.errorMessage || `ใหม่ ${formatNumber(job.newTickets)} · เปลี่ยน ${formatNumber(job.changedTickets)}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+
           <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
             <section className="rounded-3xl bg-white p-6 shadow-panel">
               <h2 className="text-xl font-bold text-ink">Database tables</h2>
@@ -173,7 +276,7 @@ export default async function AdminPage() {
                   </thead>
                   <tbody className="divide-y divide-border bg-white">
                     {data.database.tables.map((table) => (
-                      <tr key={table.table}>
+                      <tr key={table.table} className="motion-row">
                         <td className="px-4 py-3 font-mono text-xs text-ink">{table.table}</td>
                         <td className="px-4 py-3 text-right font-semibold text-ink">{formatNumber(table.count)}</td>
                         <td className="px-4 py-3 text-xs text-muted">{table.error || "ok"}</td>
@@ -188,7 +291,7 @@ export default async function AdminPage() {
               <h2 className="text-xl font-bold text-ink">Storage buckets</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1">
                 {data.storage.buckets.map((bucket) => (
-                  <div key={bucket.bucket} className="rounded-2xl border border-border bg-surface p-4">
+                  <div key={bucket.bucket} className="motion-card rounded-2xl border border-border bg-surface p-4">
                     <StorageGauge bytes={bucket.totalBytes} objectCount={bucket.objectCount} />
                     <div className="mt-4 flex items-end justify-between gap-4 border-t border-border pt-3">
                       <div className="min-w-0">
@@ -208,7 +311,7 @@ export default async function AdminPage() {
           </div>
 
           <AdminBackupPanel />
-          <AdminWipePanel />
+          <AdminWipePanel isProduction={data.deployment.isProduction} environmentName={data.deployment.appEnvironment} />
         </div>
       )}
     </AppShell>

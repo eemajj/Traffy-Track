@@ -120,14 +120,22 @@ export function AdminBackupPanel() {
   );
 }
 
-export function AdminWipePanel() {
+export function AdminWipePanel({
+  isProduction,
+  environmentName
+}: {
+  isProduction: boolean;
+  environmentName: string;
+}) {
   const [mode, setMode] = useState<WipeMode>("reports");
   const [confirmation, setConfirmation] = useState("");
   const [isWiping, setIsWiping] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const requiredConfirmation = mode === "all" ? "WIPE ALL DATA" : "WIPE REPORT DATA";
+  const requiredConfirmation = `${mode === "all" ? "WIPE ALL DATA" : "WIPE REPORT DATA"}${
+    isProduction ? " PRODUCTION" : ""
+  }`;
 
   async function wipeData() {
     setIsWiping(true);
@@ -169,6 +177,10 @@ export function AdminWipePanel() {
       <p className="mt-2 max-w-3xl text-sm leading-6 text-danger/90">
         ใช้หลังจาก backup สำเร็จแล้วเท่านั้น โหมดล้างรายงานจะลบ report batches, รายการฝ่าย, รายการเคสในรายงาน และไฟล์หลักฐาน
         ส่วนโหมดล้างทั้งหมดจะล้าง ticket/import/report data และไฟล์ชั่วคราว โดยไม่ลบ backup ZIP ใน export bucket
+      </p>
+      <p className="mt-3 max-w-3xl rounded-2xl border border-danger/20 bg-white px-4 py-3 text-sm leading-6 text-danger">
+        Environment: <span className="font-semibold">{environmentName}</span>
+        {isProduction ? " · ต้องพิมพ์คำว่า PRODUCTION ต่อท้ายคำยืนยันก่อนล้างข้อมูลจริง" : " · ใช้สำหรับทดสอบ flow ก่อนขึ้น production"}
       </p>
 
       <div className="mt-5 grid gap-3 lg:grid-cols-[240px_1fr_auto]">

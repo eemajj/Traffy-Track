@@ -9,12 +9,11 @@ import {
   TicketRecord
 } from "@/lib/import/types";
 import { normalizeCsvRow, normalizeTicket, validateCsvColumns } from "@/lib/import/normalize";
+import { dedupeTicketsById } from "@/lib/import/dedupe";
 import { IMPORT_BUCKET } from "@/lib/storage";
 import { isClosedTicketState } from "@/lib/tickets";
 
-const UPSERT_CHUNK_SIZE = 500;
 const SELECT_CHUNK_SIZE = 500;
-const HISTORY_CHUNK_SIZE = 1000;
 
 type ImportBatchRow = {
   id: string;
@@ -68,24 +67,6 @@ function areTimestampValuesEqual(left: string | null, right: string | null) {
   }
 
   return leftTime === rightTime;
-}
-
-function dedupeTicketsById(ticketRecords: TicketRecord[]) {
-  const dedupedMap = new Map<string, TicketRecord>();
-  let duplicateRows = 0;
-
-  for (const ticket of ticketRecords) {
-    if (dedupedMap.has(ticket.ticket_id)) {
-      duplicateRows += 1;
-    }
-
-    dedupedMap.set(ticket.ticket_id, ticket);
-  }
-
-  return {
-    ticketRecords: [...dedupedMap.values()],
-    duplicateRows
-  };
 }
 
 function mapImportBatchRow(row: ImportBatchRow): ImportJob {
@@ -154,6 +135,23 @@ export async function getImportJob(importBatchId: string): Promise<ImportJob | n
   }
 
   return data ? mapImportBatchRow(data as ImportBatchRow) : null;
+}
+
+export async function getRecentImportJobs(limit = 8): Promise<ImportJob[]> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("import_batches")
+    .select(
+      "id, filename, total_rows, processed_rows, duplicate_rows, new_tickets, reopened_tickets, changed_tickets, unchanged_tickets, changed_fields, status, error_message, imported_at, completed_at"
+    )
+    .order("imported_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`โหลดประวัติรอบนำเข้าไม่สำเร็จ: ${error.message}`);
+  }
+
+  return ((data || []) as ImportBatchRow[]).map(mapImportBatchRow);
 }
 
 async function markImportBatchFailed(importBatchId: string, error: unknown) {
@@ -397,43 +395,22 @@ export async function processImportCsvText(
       }
     }
 
-    for (const upsertChunk of chunkArray(upsertRows, UPSERT_CHUNK_SIZE)) {
-      const { error } = await supabase.from("tickets").upsert(upsertChunk, {
-        onConflict: "ticket_id"
-      });
+    const { error: applyError } = await supabase.rpc("apply_import_batch", {
+      p_import_batch_id: importBatchId,
+      p_tickets: upsertRows,
+      p_history: historyRows,
+      p_total_rows: normalizedTicketRecords.length,
+      p_processed_rows: ticketRecords.length,
+      p_duplicate_rows: duplicateRows,
+      p_new_tickets: newTickets,
+      p_reopened_tickets: reopenedTickets,
+      p_changed_tickets: changedTickets,
+      p_unchanged_tickets: unchangedTickets,
+      p_changed_fields: changedFields
+    });
 
-      if (error) {
-        throw new Error(`บันทึกข้อมูลเรื่องไม่สำเร็จ: ${error.message}`);
-      }
-    }
-
-    for (const historyChunk of chunkArray(historyRows, HISTORY_CHUNK_SIZE)) {
-      const { error } = await supabase.from("ticket_history").insert(historyChunk);
-
-      if (error) {
-        throw new Error(`บันทึกประวัติเรื่องไม่สำเร็จ: ${error.message}`);
-      }
-    }
-
-    const { error: updateBatchError } = await supabase
-      .from("import_batches")
-      .update({
-        total_rows: normalizedTicketRecords.length,
-        processed_rows: ticketRecords.length,
-        duplicate_rows: duplicateRows,
-        new_tickets: newTickets,
-        reopened_tickets: reopenedTickets,
-        changed_tickets: changedTickets,
-        unchanged_tickets: unchangedTickets,
-        changed_fields: changedFields,
-        status: "completed",
-        error_message: null,
-        completed_at: new Date().toISOString()
-      })
-      .eq("id", importBatchId);
-
-    if (updateBatchError) {
-      throw new Error(`อัปเดตสรุปรอบนำเข้าไม่สำเร็จ: ${updateBatchError.message}`);
+    if (applyError) {
+      throw new Error(`บันทึกข้อมูลนำเข้าแบบ transaction ไม่สำเร็จ: ${applyError.message}`);
     }
 
     return {

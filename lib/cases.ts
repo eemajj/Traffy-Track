@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
+import { getSafeHttpsUrl } from "@/lib/safe-url";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { CLOSED_TICKET_STATES, buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
 
@@ -443,6 +444,7 @@ export async function getCaseDetailData(ticketId: string): Promise<CaseDetailDat
       status: "ready",
       ticket: {
         ...ticket,
+        photo_url: getSafeHttpsUrl(ticket.photo_url),
         org_list: Array.isArray(ticket.org_list) ? ticket.org_list : [],
         dept_list: Array.isArray(ticket.dept_list) ? ticket.dept_list : []
       },

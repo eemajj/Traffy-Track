@@ -12,9 +12,15 @@
 - เพิ่ม skeleton loading สำหรับหน้าหลัก และ progress bar ในหน้า import แล้ว
 - ปรับ import ให้รองรับ `ticket_id` ซ้ำใน CSV เดียวกันแบบ deterministic แล้ว พร้อมสรุปแถวซ้ำ/จำนวนเรื่องที่ประมวลผลจริง/จำนวน field ที่เปลี่ยน
 - Server ล่าสุดเปิดไว้ที่ `http://127.0.0.1:3000` ถ้าพรุ่งนี้เข้าไม่ได้ให้ restart ใหม่
+- Audit รอบ 2026-07-11 พบประเด็น Critical ด้าน Supabase anon access/RLS และ import atomicity; ห้ามถือว่า production-ready จนกว่าจะปิดสิทธิ์ anon และทดสอบซ้ำ
+- แผน remediation เร่งด่วน: RLS/revoke, auth fail-closed + logout, แก้ open redirect/duplicate/date/URL validation, แล้วจึงทำ import transaction และ backup/restore
 
 ## Done
-- ต่อจาก memory และแก้ local วันที่ 2026-07-07: import dedupe `ticket_id` ซ้ำในไฟล์เดียวกันก่อน upsert โดยใช้แถวท้ายสุดเป็นค่าที่นำเข้า
+- Audit remediation patch 2026-07-11: เพิ่ม migration `20260711143000_lock_down_public_api.sql` สำหรับ RLS/revoke anon และ RPC; ยังไม่ apply remote เพราะ project environment และ Supabase access token ยังยืนยันไม่ได้
+- เพิ่ม migration `20260712100000_import_atomic_apply.sql` และเปลี่ยน import ให้ upsert tickets, บันทึก history และปิด batch ใน transaction เดียวผ่าน RPC; ต้อง apply migration ก่อนเปิดใช้งาน import บน environment ที่ใช้งานจริง
+- Audit remediation patch 2026-07-11: บังคับ `APP_SESSION_SECRET` อย่างน้อย 32 bytes โดยไม่ fallback, เพิ่ม logout, ปิด open redirect, ทำ duplicate policy ให้ใช้แถวแรก, ตรึงวันที่ `Asia/Bangkok`, และกรอง URL รูปให้รับเฉพาะ HTTPS
+- เพิ่ม regression tests สำหรับ dedupe/date/safe URL; `npm test` ผ่าน 4 tests
+- ต่อจาก memory และแก้ local วันที่ 2026-07-07: import dedupe `ticket_id` ซ้ำในไฟล์เดียวกันก่อน upsert โดยใช้แถวแรกเป็นค่าที่นำเข้า
 - เพิ่มผลลัพธ์ import: `processedRows`, `duplicateRows`, และ `changedFields`
 - หน้า `/import` แสดง `เรื่องที่ประมวลผลจริง`, `แถว ticket ซ้ำที่ข้าม`, และ `field ที่เปลี่ยนในเรื่องเดิม`
 - หลัง import revalidate `/cases` เพิ่มจาก `/dashboard` และ `/report`
@@ -117,7 +123,9 @@
 - QA runtime ผ่านสำหรับ `/import`, `/dashboard`, `/cases`, `/report`, `/report/[batchId]`, และ `/cases/[ticketId]` โดยไม่มี unavailable error
 
 ## Not Started Yet
-- ยังไม่มีงานค้างระดับ feature หลักจาก requirement ล่าสุด
+- งาน security/reliability จาก audit 2026-07-11: apply และ verify RLS/revoke กับ project ที่ยืนยัน environment แล้ว
+- งาน deploy: apply และ smoke-test migration `20260711143000_lock_down_public_api.sql` กับ `20260712100000_import_atomic_apply.sql` บน staging/production
+- งาน reliability ระยะถัดไป: durable queue, report immutable snapshot, paginated export และ restore drill
 - ยังไม่ได้ทดสอบ import ซ้ำด้วยไฟล์ล่าสุด `citydata เขตทวีวัฒนา 2026-07-06 23-12-38.csv` เพราะไฟล์นี้ไม่อยู่ใน workspace
 - ถ้ามี feedback จากผู้ใช้ปลายทาง ควรตรวจรูปแบบ cell/print layout ของ Excel จาก `formTF.xlsx` เพิ่ม
 

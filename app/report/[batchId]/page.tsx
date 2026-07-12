@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { ReportDepartmentChecklist } from "@/app/report/[batchId]/report-department-checklist";
 import { getReportBatchDetailData } from "@/lib/report";
+import { BANGKOK_TIME_ZONE } from "@/lib/report-date";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ type ReportBatchDetailPageProps = {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium"
+    dateStyle: "medium",
+    timeZone: BANGKOK_TIME_ZONE
   }).format(new Date(value));
 }
 
@@ -26,7 +28,8 @@ function formatDateTime(value: string | null) {
 
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: BANGKOK_TIME_ZONE
   }).format(new Date(value));
 }
 
