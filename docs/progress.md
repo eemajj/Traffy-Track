@@ -12,15 +12,15 @@
 - เพิ่ม skeleton loading สำหรับหน้าหลัก และ progress bar ในหน้า import แล้ว
 - ปรับ import ให้รองรับ `ticket_id` ซ้ำใน CSV เดียวกันแบบ deterministic แล้ว พร้อมสรุปแถวซ้ำ/จำนวนเรื่องที่ประมวลผลจริง/จำนวน field ที่เปลี่ยน
 - Server ล่าสุดเปิดไว้ที่ `http://127.0.0.1:3000` ถ้าพรุ่งนี้เข้าไม่ได้ให้ restart ใหม่
-- Audit รอบ 2026-07-11 พบประเด็น Critical ด้าน Supabase anon access/RLS และ import atomicity; ห้ามถือว่า production-ready จนกว่าจะปิดสิทธิ์ anon และทดสอบซ้ำ
+- Critical remediation จาก audit 2026-07-11 ถูก apply บน Supabase project `Traffy Follow` แล้ว: anon access ถูกปิดและ import ใช้ transaction RPC; งาน production readiness ที่เหลือคือ backup/restore drill และ reliability ระยะถัดไป
 - แผน remediation เร่งด่วน: RLS/revoke, auth fail-closed + logout, แก้ open redirect/duplicate/date/URL validation, แล้วจึงทำ import transaction และ backup/restore
 
 ## Done
 - V2.3 role/permission + audit log ผ่านการตรวจแล้ว: แยกสิทธิ์ `admin`/`operator`, รองรับ cookie `v1` เดิมเป็น admin, เพิ่ม admin route/API guard และหน้า Audit log
 - เพิ่ม audit events สำหรับ backup export, system wipe และ import แบบ sync/background รวมผลสำเร็จ/ล้มเหลว
-- V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log fallback ก่อน apply migration
-- Audit remediation patch 2026-07-11: เพิ่ม migration `20260711143000_lock_down_public_api.sql` สำหรับ RLS/revoke anon และ RPC; ยังไม่ apply remote เพราะ project environment และ Supabase access token ยังยืนยันไม่ได้
-- เพิ่ม migration `20260712100000_import_atomic_apply.sql` และเปลี่ยน import ให้ upsert tickets, บันทึก history และปิด batch ใน transaction เดียวผ่าน RPC; ต้อง apply migration ก่อนเปิดใช้งาน import บน environment ที่ใช้งานจริง
+- V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log
+- Apply migration `20260711143000_lock_down_public_api.sql`, `20260712100000_import_atomic_apply.sql` และ `20260712153000_audit_events.sql` บน Supabase project `Traffy Follow` สำเร็จ
+- Smoke test หลัง migration ผ่าน: admin health `200`, backup export `200`, Audit log อ่าน event จริงได้ และ anon อ่าน `tickets` ถูกปฏิเสธ `401`
 - Audit remediation patch 2026-07-11: บังคับ `APP_SESSION_SECRET` อย่างน้อย 32 bytes โดยไม่ fallback, เพิ่ม logout, ปิด open redirect, ทำ duplicate policy ให้ใช้แถวแรก, ตรึงวันที่ `Asia/Bangkok`, และกรอง URL รูปให้รับเฉพาะ HTTPS
 - เพิ่ม regression tests สำหรับ dedupe/date/safe URL; `npm test` ผ่าน 4 tests
 - ต่อจาก memory และแก้ local วันที่ 2026-07-07: import dedupe `ticket_id` ซ้ำในไฟล์เดียวกันก่อน upsert โดยใช้แถวแรกเป็นค่าที่นำเข้า
@@ -126,8 +126,6 @@
 - QA runtime ผ่านสำหรับ `/import`, `/dashboard`, `/cases`, `/report`, `/report/[batchId]`, และ `/cases/[ticketId]` โดยไม่มี unavailable error
 
 ## Not Started Yet
-- งาน security/reliability จาก audit 2026-07-11: apply และ verify RLS/revoke กับ project ที่ยืนยัน environment แล้ว
-- งาน deploy: apply และ smoke-test migration `20260711143000_lock_down_public_api.sql` กับ `20260712100000_import_atomic_apply.sql` บน staging/production
 - Deployment baseline ถูก push แล้วที่ branch `agent/prepare-deploy-baseline`; เมื่อขอ “Deploy Version ใหม่” ให้ใช้ branch/PR นี้เป็นจุดเริ่มต้น และไม่รวมฟีเจอร์ Phase ถัดไปโดยอัตโนมัติ
 - ฟีเจอร์ Phase ถัดไปต้องพัฒนาใน branch แยกชื่อ `feature/<short-name>` และห้ามแก้บน deployment baseline โดยตรง
 - สร้าง remote branch สำหรับ Phase 2 แล้ว: `feature/traffy-track-v2` แตกจาก deployment baseline
@@ -149,9 +147,8 @@
 ## Next Immediate Step
 - ทำต่อบน branch `feature/traffy-track-v2`
 - V2.1 แผนที่และ V2.2 Data Quality ถูกตรวจและ push แล้วที่ commit `7b208a5`
-- V2.3 role/permission + audit log ผ่าน checks และ runtime QA แล้ว; ขั้นถัดไปคือ apply migration `20260712153000_audit_events.sql` กับ environment ที่ยืนยันแล้ว
-- หลัง apply migration ให้ smoke-test การเขียน/อ่าน Audit log จาก action จริงแบบ reversible
-- จากนั้นเริ่ม V2.4 analytics ใน branch แยกจาก checkpoint V2.3
+- V2.3 role/permission + audit log ถูก commit/push ที่ `fd34fd2`; migrations และ smoke test บน project `Traffy Follow` ผ่านแล้ว
+- ขั้นถัดไปเริ่ม V2.4 analytics ใน branch แยกจาก checkpoint V2.3
 
 ## Pause Checkpoint — 2026-07-12
 - กลับมาดำเนินงานต่อและตรวจ V2.3 ครบแล้ว
