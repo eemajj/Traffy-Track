@@ -30,6 +30,10 @@
 - Staging QA ผ่านทุกหน้าหลัก, system health และ maintenance cron; แก้ bucket limit ให้สอดคล้อง Supabase Free Tier สูงสุด 50 MB พร้อม regression test
 - สร้าง Production backup ZIP ก่อน deploy (ประมาณ 7.95 MB), ยืนยัน migration state ครบ และ deploy commit `57d0666` ขึ้น `https://traffy-track.vercel.app` สำเร็จ
 - Production smoke test วันที่ 2026-07-13 ผ่านสำหรับ login, Analytics auth guard และ maintenance cron (`200/ok`)
+- Performance/stability รอบ 2026-07-13: ย้าย Vercel Functions จาก Washington ไป Tokyo (`hnd1`) ให้ใกล้ Supabase, ลด Preview warm response ของ Cases/Map/Dashboard จากราว 1.3–2.3 วินาทีเหลือประมาณ 0.4–0.9 วินาที
+- เพิ่ม cached `ticket_filter_options` RPC เพื่อตัดการดึง filter source สูงสุด 20,000 แถวทุก request และ invalidate หลัง import
+- แยก Leaflet เข้า client-only loader แก้ production SSR error `window is not defined`; Map initial JS ลดจากประมาณ 143 KB เหลือ 99 KB
+- เพิ่ม global route error recovery พร้อมปุ่มลองโหลดใหม่ และ deploy Production commit `fe502f3` สำเร็จ; function region/cron smoke test ผ่าน
 - V2.3 role/permission + audit log ผ่านการตรวจแล้ว: แยกสิทธิ์ `admin`/`operator`, รองรับ cookie `v1` เดิมเป็น admin, เพิ่ม admin route/API guard และหน้า Audit log
 - เพิ่ม audit events สำหรับ backup export, system wipe และ import แบบ sync/background รวมผลสำเร็จ/ล้มเหลว
 - V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log
