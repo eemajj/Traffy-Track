@@ -34,6 +34,9 @@
 - เพิ่ม cached `ticket_filter_options` RPC เพื่อตัดการดึง filter source สูงสุด 20,000 แถวทุก request และ invalidate หลัง import
 - แยก Leaflet เข้า client-only loader แก้ production SSR error `window is not defined`; Map initial JS ลดจากประมาณ 143 KB เหลือ 99 KB
 - เพิ่ม global route error recovery พร้อมปุ่มลองโหลดใหม่ และ deploy Production commit `fe502f3` สำเร็จ; function region/cron smoke test ผ่าน
+- ปรับ visual system เป็นธีม `Civic Emerald` โดยใช้สีหลัก `#00744B`, tint surfaces/borders/text/shadows ให้สอดคล้อง และอัปเดต favicon/design documentation แล้ว
+- เพิ่ม motion ที่มีหน้าที่: active navigation indicator, navigation progress, skeleton shimmer, header/section settle และ hover/press feedback พร้อม reduced-motion fallback
+- Impeccable detector, tests 16/16, typecheck, lint, build และ Preview runtime QA ผ่าน; deploy Production commit `39e5b07` สำเร็จและ login/cron smoke test ผ่าน
 - V2.3 role/permission + audit log ผ่านการตรวจแล้ว: แยกสิทธิ์ `admin`/`operator`, รองรับ cookie `v1` เดิมเป็น admin, เพิ่ม admin route/API guard และหน้า Audit log
 - เพิ่ม audit events สำหรับ backup export, system wipe และ import แบบ sync/background รวมผลสำเร็จ/ล้มเหลว
 - V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log
