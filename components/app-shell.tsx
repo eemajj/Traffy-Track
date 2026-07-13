@@ -19,7 +19,7 @@ export async function AppShell({ title, description, children }: AppShellProps) 
     <div className="min-h-screen bg-bg text-ink">
       <NavigationProgress />
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <header className="motion-shell mb-8 overflow-hidden rounded-[28px] border border-border/80 bg-white/90 p-6 shadow-panel backdrop-blur">
+        <header className="app-header motion-shell mb-8 overflow-hidden rounded-[28px] border border-border/80 bg-white/95 p-6 shadow-panel">
           <div className="motion-rail mb-6 h-1.5 w-28 rounded-full bg-brand/80" />
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">

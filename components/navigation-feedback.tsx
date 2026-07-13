@@ -61,7 +61,7 @@ export function PendingNavLink({ href, label }: PendingNavLinkProps) {
 
         window.dispatchEvent(new Event("app:navigation-start"));
       }}
-      className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-brand/35 hover:bg-white hover:text-brand hover:shadow-hover ${
+      className={`nav-pill rounded-2xl border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-brand/35 hover:bg-white hover:text-brand hover:shadow-hover ${
         isActive ? "border-brand/25 bg-brand/10 text-brand" : "border-border bg-surface text-ink"
       }`}
     >

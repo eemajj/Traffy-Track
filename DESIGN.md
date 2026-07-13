@@ -2,16 +2,16 @@
 name: CityData Case Tracker
 description: Contemporary civic operations dashboard for Thawi Watthana district case tracking.
 colors:
-  primary: "#3659B8"
-  primary-deep: "#2A448E"
-  accent-cold: "#7FA7FF"
-  neutral-bg: "#F7F9FC"
-  surface: "#EEF3F8"
-  surface-strong: "#E2EAF3"
-  ink: "#162033"
-  muted: "#5B6B84"
-  border: "#CCD6E3"
-  success: "#1F7A5A"
+  primary: "#00744B"
+  primary-deep: "#005F3E"
+  accent-cold: "#63C9A2"
+  neutral-bg: "#F5FAF7"
+  surface: "#EAF4EF"
+  surface-strong: "#DBEAE2"
+  ink: "#11251D"
+  muted: "#526B61"
+  border: "#C6D9CF"
+  success: "#2F7D4E"
   warning: "#C98322"
   danger: "#B13A3A"
 typography:
@@ -58,13 +58,13 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.primary}"
-    textColor: "#F7F9FC"
+    textColor: "#F5FAF7"
     rounded: "{rounded.md}"
     padding: "12px 20px"
     typography: "{typography.label}"
   button-primary-hover:
     backgroundColor: "{colors.primary-deep}"
-    textColor: "#F7F9FC"
+    textColor: "#F5FAF7"
   button-secondary:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -87,14 +87,14 @@ components:
 
 ## Overview
 
-**Creative North Star: "Scandinavian winter control room"**
+**Creative North Star: "Emerald civic control room"**
 
 This system should feel like a calm civic operations surface built for long working sessions: cool daylight, disciplined structure, and clear signals. It is formal without stiffness. The design earns trust through consistency, spacing, and crisp hierarchy rather than by looking institutional or heavy.
 
 The interface rejects two extremes at once: old bureaucratic clutter and trendy startup dashboard theatrics. It should never feel dusty, overloaded, beige, neon, glassy, or over-carded. Nordic here means cool light, quiet materials, and disciplined rhythm, not blank white emptiness or generic minimalism.
 
 Key Characteristics:
-- Cool, near-white architectural surfaces with one indigo civic anchor
+- Green-tinted near-white architectural surfaces with one emerald civic anchor
 - Tight, operational hierarchy with low ornament and clear status language
 - Motion used for feedback and state transitions, never for spectacle
 - Panels and lists that feel measured, not boxed-in or template-driven
@@ -102,26 +102,26 @@ Key Characteristics:
 
 ## Colors
 
-The palette is restrained and cold-leaning, with indigo as the civic anchor and pale glacial layers doing most of the structural work.
+The palette is restrained and calm, with Thawi Watthana emerald as the civic anchor and pale green-tinted layers doing most of the structural work.
 
 ### Primary
-- **Signal Indigo** (`#3659B8`): the main action and orientation color. Use for primary CTA, current location, selected state, active filters, and important directional cues.
-- **Deep Ledger Indigo** (`#2A448E`): hover and pressed depth for primary controls; also valid for compact headers that need stronger anchoring.
+- **Civic Emerald** (`#00744B`): the main action and orientation color. Use for primary CTA, current location, selected state, active filters, and important directional cues.
+- **Deep Civic Emerald** (`#005F3E`): hover and pressed depth for primary controls; also valid for compact headers that need stronger anchoring.
 
 ### Secondary
-- **Winter Beacon** (`#7FA7FF`): a lighter accent for subtle emphasis, chart or badge support, and motion highlights. Never use as the main CTA.
+- **Mint Signal** (`#63C9A2`): a lighter accent for subtle emphasis, chart or badge support, and motion highlights. Never use as the main CTA.
 
 ### Neutral
-- **Snow Ledger** (`#F7F9FC`): page background. It should read clean and cold, not warm or paper-like.
-- **Frost Panel** (`#EEF3F8`): secondary surface for toolbars, dropzones, grouped controls, and dashboard strips.
-- **Ice Border** (`#CCD6E3`): boundaries, dividers, input strokes, and subtle structural lines.
-- **Civic Ink** (`#162033`): primary text and strong iconography.
-- **Archive Blue-Gray** (`#5B6B84`): secondary text, helper text, metadata, and inactive labels.
+- **Mist Ledger** (`#F5FAF7`): page background. It should read clean and lightly green-tinted, not warm or paper-like.
+- **Mint Frost Panel** (`#EAF4EF`): secondary surface for toolbars, dropzones, grouped controls, and dashboard strips.
+- **Civic Border** (`#C6D9CF`): boundaries, dividers, input strokes, and subtle structural lines.
+- **Forest Ink** (`#11251D`): primary text and strong iconography.
+- **Archive Green-Gray** (`#526B61`): secondary text, helper text, metadata, and inactive labels.
 
 ### Named Rules
 **The Cold Architecture Rule.** Warmth must never come from the base surface. The page background stays cool and near-white; urgency and meaning come from signal colors and typography.
 
-**The One-Anchor Rule.** Indigo carries navigation and action. Do not introduce extra saturated hues just to make a screen feel “designed.”
+**The One-Anchor Rule.** Emerald carries navigation and action. Do not introduce extra saturated hues just to make a screen feel “designed.”
 
 ## Typography
 
@@ -156,8 +156,8 @@ Depth is conveyed primarily through tonal layering and edge definition, with one
 
 ### Buttons
 - **Shape:** soft-rectangular, not playful (`16px` radius)
-- **Primary:** Signal Indigo fill with near-white text, medium horizontal padding, and confident weight
-- **Hover / Focus:** darken toward Deep Ledger Indigo; focus ring should be a cold blue halo, not browser blue
+- **Primary:** Civic Emerald fill with near-white text, medium horizontal padding, and confident weight
+- **Hover / Focus:** darken toward Deep Civic Emerald; focus ring should be a soft emerald halo, not browser blue
 - **Secondary / Ghost:** frost or white surfaces with clear ink text and a visible structural border
 
 ### Chips
@@ -173,11 +173,11 @@ Depth is conveyed primarily through tonal layering and edge definition, with one
 
 ### Inputs / Fields
 - **Style:** calm white fill or frost fill with clear stroke, no oversized rounding
-- **Focus:** stronger indigo ring and border shift; state must be immediately visible
+- **Focus:** stronger emerald ring and border shift; state must be immediately visible
 - **Error / Disabled:** error uses danger tint + text; disabled uses lower-contrast neutrals but remains legible
 
 ### Navigation
-- **Style:** top-level navigation should feel like a civic instrument panel, not a marketing navbar. Active items use indigo fill or underline logic consistently. Inactive items stay quiet.
+- **Style:** top-level navigation should feel like a civic instrument panel, not a marketing navbar. Active items use emerald fill or underline logic consistently. Inactive items stay quiet.
 
 ### Dropzones
 - **Style:** large, calm, instructional surfaces with dashed cool border and one strong signal state on drag-over
@@ -186,8 +186,8 @@ Depth is conveyed primarily through tonal layering and edge definition, with one
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep the page background cool and near-white, using `#F7F9FC` or adjacent tones instead of cream, parchment, or sand.
-- **Do** use indigo as the main action and selection language, keeping it rare enough to matter.
+- **Do** keep the page background calm and near-white, using `#F5FAF7` or adjacent green-tinted tones instead of cream, parchment, or sand.
+- **Do** use emerald as the main action and selection language, keeping it rare enough to matter.
 - **Do** make pending or risky states unmistakable through color, text, and grouping together.
 - **Do** use motion for feedback, reveal order, and state transition in the 150–220ms range with reduced-motion fallbacks.
 - **Do** keep radii disciplined: `16px` for controls, `24px` for major containers, pills only for chips and small badges.

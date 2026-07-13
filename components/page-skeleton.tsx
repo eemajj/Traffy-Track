@@ -7,7 +7,7 @@ type PageSkeletonProps = {
 };
 
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-2xl bg-surface-strong ${className}`} />;
+  return <div className={`skeleton-block rounded-2xl ${className}`} />;
 }
 
 function MetricSkeleton() {
