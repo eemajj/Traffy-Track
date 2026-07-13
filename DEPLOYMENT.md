@@ -2,6 +2,8 @@
 
 This project should treat code deploys and production data as separate concerns.
 
+For local setup and the standard development server command, see [`LOCAL_DEVELOPMENT.md`](./LOCAL_DEVELOPMENT.md).
+
 ## Environments
 
 - Local: developer machine. Use `.env.local`; prefer staging or throwaway Supabase data for risky tests.
@@ -46,6 +48,7 @@ npm run predeploy
 
 It runs:
 
+- `npm test`
 - `npm run typecheck`
 - `npm run lint`
 - `npm run build`

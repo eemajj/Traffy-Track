@@ -41,6 +41,21 @@ type ImportPreview = {
   sampledExistingTicketRows: number;
   sampledNewTicketRows: number;
   sampledChangedTicketRows: number;
+  dataQualitySignals: {
+    semanticDuplicateGroupCount: number;
+    semanticDuplicateTicketCount: number;
+    semanticDuplicateExamples: Array<{ ticketIds: string[]; reason: string }>;
+    departmentSuggestionCount: number;
+    departmentSuggestionExamples: Array<{ ticketId: string; category: string; matchedKeywords: string[] }>;
+    urgentAttentionCount: number;
+    reviewAttentionCount: number;
+    attentionExamples: Array<{
+      ticketId: string;
+      level: "urgent" | "review";
+      label: string;
+      matchedKeywords: string[];
+    }>;
+  };
   parseWarnings: string[];
   canImport: boolean;
 };
@@ -672,6 +687,79 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
               <p className="mt-4 text-xs leading-5 text-muted">
                 Preview อ่านสูงสุดประมาณ 512 KB และ 300 แถวแรกเท่านั้น เพื่อคุมการใช้ Vercel และ Supabase free tier
               </p>
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-ink">สัญญาณช่วยตรวจเพิ่มเติม</h3>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+                  เป็นข้อสังเกตจากกฎแบบระมัดระวังในตัวอย่างเท่านั้น ระบบไม่แก้ข้อมูล ไม่มอบหมายฝ่าย และไม่จัดลำดับงานแทนเจ้าหน้าที่
+                </p>
+              </div>
+              <span className="w-fit rounded-full bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand">ตรวจโดยคนก่อนใช้</span>
+            </div>
+
+            <div className="mt-4 grid overflow-hidden rounded-2xl border border-border bg-surface sm:grid-cols-3 sm:divide-x sm:divide-border">
+              <div className="px-4 py-3">
+                <p className="text-xs font-semibold text-muted">กลุ่มที่อาจเป็นเรื่องซ้ำ</p>
+                <p className="mt-1 text-xl font-semibold text-ink">{formatNumber(preview.dataQualitySignals.semanticDuplicateGroupCount)}</p>
+              </div>
+              <div className="border-t border-border px-4 py-3 sm:border-t-0">
+                <p className="text-xs font-semibold text-muted">เคสไม่มีฝ่ายที่มีหมวดแนะนำ</p>
+                <p className="mt-1 text-xl font-semibold text-ink">{formatNumber(preview.dataQualitySignals.departmentSuggestionCount)}</p>
+              </div>
+              <div className="border-t border-border px-4 py-3 sm:border-t-0">
+                <p className="text-xs font-semibold text-muted">ควรเร่งตรวจ / ควรติดตาม</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {formatNumber(preview.dataQualitySignals.urgentAttentionCount)} / {formatNumber(preview.dataQualitySignals.reviewAttentionCount)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {preview.dataQualitySignals.semanticDuplicateExamples.length > 0 ? (
+                <details className="rounded-2xl border border-border bg-white px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-ink">ดูตัวอย่างเรื่องที่อาจซ้ำกัน</summary>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-muted">
+                    {preview.dataQualitySignals.semanticDuplicateExamples.map((example) => (
+                      <li key={example.ticketIds.join(":")}>
+                        <span className="font-mono text-xs font-semibold text-ink">{example.ticketIds.join(" ↔ ")}</span>
+                        <span> · {example.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              {preview.dataQualitySignals.departmentSuggestionExamples.length > 0 ? (
+                <details className="rounded-2xl border border-border bg-white px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-ink">ดูตัวอย่างหมวดงานที่อาจเกี่ยวข้อง</summary>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-muted">
+                    {preview.dataQualitySignals.departmentSuggestionExamples.map((example) => (
+                      <li key={example.ticketId}>
+                        <span className="font-mono text-xs font-semibold text-ink">{example.ticketId}</span>
+                        <span> · {example.category} จากคำว่า “{example.matchedKeywords.join("”, “")}”</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              {preview.dataQualitySignals.attentionExamples.length > 0 ? (
+                <details className="rounded-2xl border border-border bg-white px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-ink">ดูตัวอย่างเคสที่ควรตรวจระดับความสนใจ</summary>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-muted">
+                    {preview.dataQualitySignals.attentionExamples.map((example) => (
+                      <li key={`${example.ticketId}:${example.level}`}>
+                        <span className="font-mono text-xs font-semibold text-ink">{example.ticketId}</span>
+                        <span> · {example.label} เพราะพบ “{example.matchedKeywords.join("”, “")}”</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
             </div>
           </div>
         </section>

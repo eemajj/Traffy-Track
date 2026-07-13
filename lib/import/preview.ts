@@ -5,6 +5,7 @@ import type { ImportPreview } from "@/lib/import/types";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { IMPORT_BUCKET } from "@/lib/storage";
 import { parseCoordinates } from "@/lib/coordinates";
+import { analyzeDataQualitySignals, createEmptyDataQualitySignals } from "@/lib/data-quality";
 
 const PREVIEW_BYTES = 512 * 1024;
 const PREVIEW_MAX_ROWS = 300;
@@ -113,6 +114,7 @@ export async function previewImportCsvFromStorage(input: {
       sampledExistingTicketRows: 0,
       sampledNewTicketRows: 0,
       sampledChangedTicketRows: 0,
+      dataQualitySignals: createEmptyDataQualitySignals(),
       parseWarnings,
       canImport: false
     };
@@ -162,6 +164,7 @@ export async function previewImportCsvFromStorage(input: {
   }
 
   const ticketIds = normalizedRows.map((row) => row.ticket_id).filter(Boolean);
+  const dataQualitySignals = analyzeDataQualitySignals(normalizedRows);
   let sampledExistingTicketRows = 0;
   let sampledNewTicketRows = 0;
   let sampledChangedTicketRows = 0;
@@ -220,6 +223,7 @@ export async function previewImportCsvFromStorage(input: {
     sampledExistingTicketRows,
     sampledNewTicketRows,
     sampledChangedTicketRows,
+    dataQualitySignals,
     parseWarnings,
     canImport: columnAnalysis.missingRequiredColumns.length === 0 && blankTicketIdRows < sampledRows.length
   };

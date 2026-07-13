@@ -1,3 +1,5 @@
+import type { DataQualitySignals } from "@/lib/data-quality";
+
 export const requiredCsvColumns = [
   "ticket_id",
   "type",
@@ -99,6 +101,7 @@ export type ImportPreview = {
   sampledExistingTicketRows: number;
   sampledNewTicketRows: number;
   sampledChangedTicketRows: number;
+  dataQualitySignals: DataQualitySignals;
   parseWarnings: string[];
   canImport: boolean;
 };

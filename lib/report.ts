@@ -16,15 +16,22 @@ const REPORT_EVIDENCE_ALLOWED_TYPES = new Set([
   "application/pdf"
 ]);
 const REPORT_EVIDENCE_MAX_BYTES = 10 * 1024 * 1024;
+const REPORT_QUERY_PAGE_SIZE = 1000;
+const REPORT_INSERT_CHUNK_SIZE = 500;
+const REPORT_ITEM_SNAPSHOT_SELECT =
+  "id, dept_name, ticket_id, snapshot_captured_at, snapshot_type, snapshot_comment, snapshot_address, snapshot_subdistrict, snapshot_timestamp, snapshot_last_activity, snapshot_state, snapshot_org_response, tickets(ticket_id, state, comment, address, subdistrict, timestamp, last_activity, org_response, type)";
 
 type PendingTicket = {
   ticket_id: string;
   dept_list: string[];
+  type: string | null;
   state: string | null;
   comment: string | null;
   address: string | null;
+  subdistrict: string | null;
   timestamp: string | null;
   last_activity: string | null;
+  org_response: string | null;
 };
 
 type ReportBatchRow = {
@@ -93,9 +100,11 @@ export type ReportPageFilters = {
 
 type ReportBatchDetailTicketRelation = {
   ticket_id: string;
+  type: string | null;
   state: string | null;
   comment: string | null;
   address: string | null;
+  subdistrict: string | null;
   timestamp: string | null;
   last_activity: string | null;
   org_response: string | null;
@@ -105,15 +114,19 @@ type ReportBatchDetailItemRow = {
   id: number;
   dept_name: string;
   ticket_id: string;
+  snapshot_captured_at: string | null;
+  snapshot_type: string | null;
+  snapshot_comment: string | null;
+  snapshot_address: string | null;
+  snapshot_subdistrict: string | null;
+  snapshot_timestamp: string | null;
+  snapshot_last_activity: string | null;
+  snapshot_state: string | null;
+  snapshot_org_response: string | null;
   tickets: ReportBatchDetailTicketRelation[] | ReportBatchDetailTicketRelation | null;
 };
 
-type ExportTicketRow = {
-  id: number;
-  dept_name: string;
-  ticket_id: string;
-  tickets: ReportBatchDetailTicketRelation[] | ReportBatchDetailTicketRelation | null;
-};
+type ExportTicketRow = ReportBatchDetailItemRow;
 
 export type ReportPageData =
   | { status: "missing_env" }
@@ -371,6 +384,65 @@ function normalizeDateFilter(value: string | undefined) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
 }
 
+type ReportQueryPageResult = {
+  data: unknown;
+  error: { message: string } | null;
+};
+
+async function fetchAllReportRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<ReportQueryPageResult>,
+  errorMessage: string
+) {
+  const rows: T[] = [];
+
+  for (let from = 0; ; from += REPORT_QUERY_PAGE_SIZE) {
+    const result = await fetchPage(from, from + REPORT_QUERY_PAGE_SIZE - 1);
+
+    if (result.error) {
+      throw new Error(`${errorMessage}: ${result.error.message}`);
+    }
+
+    const page = (result.data as T[] | null) || [];
+    rows.push(...page);
+
+    if (page.length < REPORT_QUERY_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return rows;
+}
+
+function resolveReportItemTicket(item: ReportBatchDetailItemRow): ReportBatchDetailTicketRelation {
+  const relation = Array.isArray(item.tickets) ? item.tickets[0] : item.tickets;
+
+  if (!item.snapshot_captured_at) {
+    return {
+      ticket_id: item.ticket_id,
+      type: relation?.type || null,
+      state: relation?.state || null,
+      comment: relation?.comment || null,
+      address: relation?.address || null,
+      subdistrict: relation?.subdistrict || null,
+      timestamp: relation?.timestamp || null,
+      last_activity: relation?.last_activity || null,
+      org_response: relation?.org_response || null
+    };
+  }
+
+  return {
+    ticket_id: item.ticket_id,
+    type: item.snapshot_type,
+    state: item.snapshot_state,
+    comment: item.snapshot_comment,
+    address: item.snapshot_address,
+    subdistrict: item.snapshot_subdistrict,
+    timestamp: item.snapshot_timestamp,
+    last_activity: item.snapshot_last_activity,
+    org_response: item.snapshot_org_response
+  };
+}
+
 export async function archiveReportBatches(input: {
   batchIds?: string[];
   markSourceDeleted?: boolean;
@@ -380,43 +452,47 @@ export async function archiveReportBatches(input: {
   }
 
   const supabase = createSupabaseAdminClient();
-  let batchesQuery = supabase.from("report_batches").select("id, report_date, created_at, note").order("report_date", { ascending: false });
+  const batches = await fetchAllReportRows<ReportBatchRow>((from, to) => {
+    let query = supabase
+      .from("report_batches")
+      .select("id, report_date, created_at, note")
+      .order("report_date", { ascending: false })
+      .order("id", { ascending: true });
 
-  if (input.batchIds && input.batchIds.length > 0) {
-    batchesQuery = batchesQuery.in("id", input.batchIds);
-  }
+    if (input.batchIds && input.batchIds.length > 0) {
+      query = query.in("id", input.batchIds);
+    }
 
-  const batchesResult = await batchesQuery;
-
-  if (batchesResult.error) {
-    throw new Error(`โหลดรอบรายงานเพื่อจัดเก็บ archive ไม่สำเร็จ: ${batchesResult.error.message}`);
-  }
-
-  const batches = (batchesResult.data as ReportBatchRow[] | null) || [];
+    return query.range(from, to);
+  }, "โหลดรอบรายงานเพื่อจัดเก็บ archive ไม่สำเร็จ");
 
   if (batches.length === 0) {
     return { archivedCount: 0 };
   }
 
   const batchIds = batches.map((batch) => batch.id);
-  const [departmentsResult, itemsResult] = await Promise.all([
-    supabase
-      .from("report_batch_departments")
-      .select("id, report_batch_id, dept_name, evidence_file_url, evidence_uploaded_at")
-      .in("report_batch_id", batchIds),
-    supabase.from("report_batch_items").select("id, report_batch_id, dept_name, ticket_id").in("report_batch_id", batchIds)
+  const [departments, items] = await Promise.all([
+    fetchAllReportRows<ReportBatchDepartmentRow>(
+      (from, to) =>
+        supabase
+          .from("report_batch_departments")
+          .select("id, report_batch_id, dept_name, evidence_file_url, evidence_uploaded_at")
+          .in("report_batch_id", batchIds)
+          .order("id", { ascending: true })
+          .range(from, to),
+      "โหลดฝ่ายเพื่อจัดเก็บ archive ไม่สำเร็จ"
+    ),
+    fetchAllReportRows<ReportBatchItemRow>(
+      (from, to) =>
+        supabase
+          .from("report_batch_items")
+          .select("id, report_batch_id, dept_name, ticket_id")
+          .in("report_batch_id", batchIds)
+          .order("id", { ascending: true })
+          .range(from, to),
+      "โหลดรายการเรื่องเพื่อจัดเก็บ archive ไม่สำเร็จ"
+    )
   ]);
-
-  if (departmentsResult.error) {
-    throw new Error(`โหลดฝ่ายเพื่อจัดเก็บ archive ไม่สำเร็จ: ${departmentsResult.error.message}`);
-  }
-
-  if (itemsResult.error) {
-    throw new Error(`โหลดรายการเรื่องเพื่อจัดเก็บ archive ไม่สำเร็จ: ${itemsResult.error.message}`);
-  }
-
-  const departments = (departmentsResult.data as ReportBatchDepartmentRow[] | null) || [];
-  const items = (itemsResult.data as ReportBatchItemRow[] | null) || [];
   const archiveRows = batches.map((batch) =>
     buildArchivePayload({
       batch,
@@ -686,18 +762,24 @@ export async function getReportBatchDetailData(batchId: string): Promise<ReportB
   try {
     const supabase = createSupabaseAdminClient();
 
-    const [batchResult, departmentsResult, itemsResult] = await Promise.all([
+    const [batchResult, departmentsResult, items] = await Promise.all([
       supabase.from("report_batches").select("id, report_date, created_at, note").eq("id", batchId).maybeSingle(),
       supabase
         .from("report_batch_departments")
         .select("id, report_batch_id, dept_name, evidence_file_url, evidence_uploaded_at")
         .eq("report_batch_id", batchId)
         .order("dept_name", { ascending: true }),
-      supabase
-        .from("report_batch_items")
-        .select("id, dept_name, ticket_id, tickets(ticket_id, state, comment, address, timestamp, last_activity, org_response)")
-        .eq("report_batch_id", batchId)
-        .order("dept_name", { ascending: true })
+      fetchAllReportRows<ReportBatchDetailItemRow>(
+        (from, to) =>
+          supabase
+            .from("report_batch_items")
+            .select(REPORT_ITEM_SNAPSHOT_SELECT)
+            .eq("report_batch_id", batchId)
+            .order("dept_name", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        "โหลดรายการเรื่องในรอบรายงานไม่สำเร็จ"
+      )
     ]);
 
     if (batchResult.error) {
@@ -712,15 +794,7 @@ export async function getReportBatchDetailData(batchId: string): Promise<ReportB
       throw new Error(`โหลดฝ่ายในรอบรายงานไม่สำเร็จ: ${departmentsResult.error.message}`);
     }
 
-    if (itemsResult.error) {
-      throw new Error(`โหลดรายการเรื่องในรอบรายงานไม่สำเร็จ: ${itemsResult.error.message}`);
-    }
-
     const departments = (departmentsResult.data as ReportBatchDepartmentRow[] | null) || [];
-    const items = ((itemsResult.data as ReportBatchDetailItemRow[] | null) || []).map((item) => ({
-      ...item,
-      tickets: Array.isArray(item.tickets) ? item.tickets : item.tickets ? [item.tickets] : []
-    }));
 
     return {
       status: "ready",
@@ -737,15 +811,15 @@ export async function getReportBatchDetailData(batchId: string): Promise<ReportB
           evidence_uploaded_at: department.evidence_uploaded_at,
           itemCount: deptItems.length,
           tickets: deptItems.map((item) => {
-            const ticket = item.tickets[0];
+            const ticket = resolveReportItemTicket(item);
             return {
               ticket_id: item.ticket_id,
-              state: ticket?.state || null,
-              comment: ticket?.comment || null,
-              address: ticket?.address || null,
-              timestamp: ticket?.timestamp || null,
-              last_activity: ticket?.last_activity || null,
-              org_response: ticket?.org_response || null
+              state: ticket.state,
+              comment: ticket.comment,
+              address: ticket.address,
+              timestamp: ticket.timestamp,
+              last_activity: ticket.last_activity,
+              org_response: ticket.org_response
             };
           })
         };
@@ -770,7 +844,7 @@ export async function getReportDepartmentExportData(
   try {
     const supabase = createSupabaseAdminClient();
 
-    const [batchResult, departmentResult, itemsResult] = await Promise.all([
+    const [batchResult, departmentResult, items] = await Promise.all([
       supabase.from("report_batches").select("id, report_date, created_at, note").eq("id", batchId).maybeSingle(),
       supabase
         .from("report_batch_departments")
@@ -778,14 +852,17 @@ export async function getReportDepartmentExportData(
         .eq("report_batch_id", batchId)
         .eq("dept_name", deptName)
         .maybeSingle(),
-      supabase
-        .from("report_batch_items")
-        .select(
-          "id, dept_name, ticket_id, tickets(ticket_id, state, comment, address, subdistrict, timestamp, last_activity, org_response, type)"
-        )
-        .eq("report_batch_id", batchId)
-        .eq("dept_name", deptName)
-        .order("id", { ascending: true })
+      fetchAllReportRows<ExportTicketRow>(
+        (from, to) =>
+          supabase
+            .from("report_batch_items")
+            .select(REPORT_ITEM_SNAPSHOT_SELECT)
+            .eq("report_batch_id", batchId)
+            .eq("dept_name", deptName)
+            .order("id", { ascending: true })
+            .range(from, to),
+        "โหลดรายการเรื่องสำหรับส่งออกไม่สำเร็จ"
+      )
     ]);
 
     if (batchResult.error) {
@@ -804,28 +881,19 @@ export async function getReportDepartmentExportData(
       return { status: "not_found" };
     }
 
-    if (itemsResult.error) {
-      throw new Error(`โหลดรายการเรื่องสำหรับส่งออกไม่สำเร็จ: ${itemsResult.error.message}`);
-    }
-
-    const items = ((itemsResult.data as ExportTicketRow[] | null) || []).map((item) => ({
-      ...item,
-      tickets: Array.isArray(item.tickets) ? item.tickets : item.tickets ? [item.tickets] : []
-    }));
-
     const tickets = items
       .map((item) => {
-        const ticket = item.tickets[0];
+        const ticket = resolveReportItemTicket(item);
         return {
           ticket_id: item.ticket_id,
-          state: ticket?.state || null,
-          comment: ticket?.comment || null,
-          address: ticket?.address || null,
-          subdistrict: (ticket as ReportBatchDetailTicketRelation & { subdistrict?: string | null } | undefined)?.subdistrict || null,
-          timestamp: ticket?.timestamp || null,
-          last_activity: ticket?.last_activity || null,
-          org_response: ticket?.org_response || null,
-          type: (ticket as ReportBatchDetailTicketRelation & { type?: string | null } | undefined)?.type || null
+          state: ticket.state,
+          comment: ticket.comment,
+          address: ticket.address,
+          subdistrict: ticket.subdistrict,
+          timestamp: ticket.timestamp,
+          last_activity: ticket.last_activity,
+          org_response: ticket.org_response,
+          type: ticket.type
         };
       })
       .sort((left, right) => {
@@ -1317,17 +1385,18 @@ export async function createReportBatch(input: { reportDate: string; note: strin
 
   const supabase = createSupabaseAdminClient();
   const closedFilter = buildClosedStatesFilter();
+  const pendingTickets = await fetchAllReportRows<PendingTicket>(
+    (from, to) =>
+      supabase
+        .from("tickets")
+        .select("ticket_id, dept_list, type, state, comment, address, subdistrict, timestamp, last_activity, org_response")
+        .not("state", "in", closedFilter)
+        .order("ticket_id", { ascending: true })
+        .range(from, to),
+    "โหลดเรื่องคงค้างไม่สำเร็จ"
+  );
 
-  const { data: pendingTickets, error: pendingTicketsError } = await supabase
-    .from("tickets")
-    .select("ticket_id, dept_list, state, comment, address, timestamp, last_activity")
-    .not("state", "in", closedFilter);
-
-  if (pendingTicketsError) {
-    throw new Error(`โหลดเรื่องคงค้างไม่สำเร็จ: ${pendingTicketsError.message}`);
-  }
-
-  const reportableTickets = ((pendingTickets as PendingTicket[] | null) || []).filter(
+  const reportableTickets = pendingTickets.filter(
     (ticket) => Array.isArray(ticket.dept_list) && ticket.dept_list.length > 0
   );
 
@@ -1335,12 +1404,12 @@ export async function createReportBatch(input: { reportDate: string; note: strin
     throw new Error("ยังไม่มีเรื่องคงค้างที่ระบุฝ่ายแล้วสำหรับสร้างรอบรายงาน");
   }
 
-  const deptMap = new Map<string, string[]>();
+  const deptMap = new Map<string, PendingTicket[]>();
   for (const ticket of reportableTickets) {
     const uniqueDepts = [...new Set(ticket.dept_list)];
     for (const dept of uniqueDepts) {
       const current = deptMap.get(dept) || [];
-      current.push(ticket.ticket_id);
+      current.push(ticket);
       deptMap.set(dept, current);
     }
   }
@@ -1364,11 +1433,21 @@ export async function createReportBatch(input: { reportDate: string; note: strin
     dept_name: deptName
   }));
 
-  const itemRows = sortedDepartments.flatMap(([deptName, ticketIds]) =>
-    ticketIds.map((ticketId) => ({
+  const snapshotCapturedAt = new Date().toISOString();
+  const itemRows = sortedDepartments.flatMap(([deptName, tickets]) =>
+    tickets.map((ticket) => ({
       report_batch_id: batchId,
       dept_name: deptName,
-      ticket_id: ticketId
+      ticket_id: ticket.ticket_id,
+      snapshot_captured_at: snapshotCapturedAt,
+      snapshot_type: ticket.type,
+      snapshot_comment: ticket.comment,
+      snapshot_address: ticket.address,
+      snapshot_subdistrict: ticket.subdistrict,
+      snapshot_timestamp: ticket.timestamp,
+      snapshot_last_activity: ticket.last_activity,
+      snapshot_state: ticket.state,
+      snapshot_org_response: ticket.org_response
     }))
   );
 
@@ -1382,10 +1461,15 @@ export async function createReportBatch(input: { reportDate: string; note: strin
     throw new Error(`สร้างรายการฝ่ายในรอบรายงานไม่สำเร็จ: ${departmentsInsertResult.error.message}`);
   }
 
-  const itemsInsertResult = await supabase.from("report_batch_items").insert(itemRows);
-  if (itemsInsertResult.error) {
-    await cleanupBatch();
-    throw new Error(`สร้างรายการเรื่องในรอบรายงานไม่สำเร็จ: ${itemsInsertResult.error.message}`);
+  for (let from = 0; from < itemRows.length; from += REPORT_INSERT_CHUNK_SIZE) {
+    const itemsInsertResult = await supabase
+      .from("report_batch_items")
+      .insert(itemRows.slice(from, from + REPORT_INSERT_CHUNK_SIZE));
+
+    if (itemsInsertResult.error) {
+      await cleanupBatch();
+      throw new Error(`สร้างรายการเรื่องในรอบรายงานไม่สำเร็จ: ${itemsInsertResult.error.message}`);
+    }
   }
 
   return { batchId };

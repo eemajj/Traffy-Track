@@ -47,30 +47,35 @@ export async function ensurePrivateBucket(
     allowedMimeTypes?: string[];
   }
 ) {
+  const bucketOptions = {
+    public: false,
+    fileSizeLimit: options?.fileSizeLimit,
+    allowedMimeTypes: options?.allowedMimeTypes
+  };
   const existingBucket = await supabase.storage.getBucket(bucket);
 
   if (!existingBucket.error) {
-    if (options?.allowedMimeTypes) {
-      const updateResult = await supabase.storage.updateBucket(bucket, {
-        public: false,
-        allowedMimeTypes: options.allowedMimeTypes
-      });
+    const updateResult = await supabase.storage.updateBucket(bucket, bucketOptions);
 
-      if (updateResult.error) {
-        throw new Error(`อัปเดตพื้นที่เก็บไฟล์ ${bucket} ไม่สำเร็จ: ${updateResult.error.message}`);
-      }
+    if (updateResult.error) {
+      throw new Error(`อัปเดตพื้นที่เก็บไฟล์ ${bucket} ไม่สำเร็จ: ${updateResult.error.message}`);
     }
 
     return;
   }
 
-  const createResult = await supabase.storage.createBucket(bucket, {
-    public: false,
-    allowedMimeTypes: options?.allowedMimeTypes
-  });
+  const createResult = await supabase.storage.createBucket(bucket, bucketOptions);
 
   if (createResult.error && !/already exists/i.test(createResult.error.message)) {
     throw new Error(`เตรียมพื้นที่เก็บไฟล์ ${bucket} ไม่สำเร็จ: ${createResult.error.message}`);
+  }
+
+  if (createResult.error) {
+    const updateResult = await supabase.storage.updateBucket(bucket, bucketOptions);
+
+    if (updateResult.error) {
+      throw new Error(`อัปเดตพื้นที่เก็บไฟล์ ${bucket} ไม่สำเร็จ: ${updateResult.error.message}`);
+    }
   }
 }
 

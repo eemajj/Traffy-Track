@@ -1,6 +1,10 @@
 # Progress
 
 ## Current Status
+- V2.4 Analytics เสร็จแล้ว: แนวโน้มรายสัปดาห์, พื้นที่หนาแน่น, อายุเรื่องคงค้าง, เวลาเฉลี่ย/มัธยฐานปิดเรื่อง และสรุปแยกฝ่าย พร้อมช่วง 30/90/180 วัน
+- V2.2 preview เพิ่มคำเตือน semantic duplicate, หมวดงานที่อาจเกี่ยวข้อง และระดับที่ควรเร่งตรวจสอบแบบไม่แก้ข้อมูลอัตโนมัติแล้ว
+- Report items เป็น immutable snapshot แล้ว พร้อม pagination เกิน 1,000 rows และ backfill รายงานเดิมแบบ best-effort
+- Free Tier operations เพิ่ม daily keepalive cron, TTL cleanup สำหรับ import/export ชั่วคราว และบังคับ Storage file-size/privacy แล้ว
 - Import, Report, Evidence upload, และ Dashboard ใช้งานกับข้อมูลจริงได้แล้ว
 - แก้ไขปัญหาภาษาไทยแสดงผลเพี้ยนใน PDF โดยเปลี่ยนไปใช้ฟอนต์ Tahoma (tahoma.ttf และ tahomabd.ttf) ในเครื่องของระบบเข้า public/fonts
 - Dashboard ล่าสุดแก้ให้แสดงเคสรอจัดฝ่ายรับผิดชอบและรายการเปลี่ยนสำคัญถูกต้องแล้ว
@@ -16,6 +20,12 @@
 - แผน remediation เร่งด่วน: RLS/revoke, auth fail-closed + logout, แก้ open redirect/duplicate/date/URL validation, แล้วจึงทำ import transaction และ backup/restore
 
 ## Done
+- เพิ่มหน้า `/analytics`, RPC `analytics_overview`, loading state, navigation/auth guard และคำอธิบายฐานตัวอย่างเวลาปิดเรื่อง
+- เพิ่ม migration `20260712220000_report_item_snapshots.sql` และปรับ create/detail/export/archive ให้ใช้ snapshot + pagination
+- เพิ่ม `/api/cron/maintenance` ป้องกันด้วย `CRON_SECRET`; keepalive ทุกวันและ cleanup import เกิน 14 วัน/export เกิน 7 วันโดยไม่แตะ evidence
+- เพิ่ม `npm run dev:local` และ `LOCAL_DEVELOPMENT.md`; predeploy รัน tests เพิ่มแล้ว
+- QA รวมล่าสุด: tests 15/15, typecheck, lint และ git diff check ผ่าน; production build ผ่านหลังเพิ่ม Analytics ก่อนรวม hardening patches
+- Runtime QA วันที่ 2026-07-13 ผ่านสำหรับ Dashboard, Analytics 30/90 วัน, Import, Cases, Map, Report, Admin และ system health; auth redirect และ operator admin guard ทำงานถูกต้อง
 - V2.3 role/permission + audit log ผ่านการตรวจแล้ว: แยกสิทธิ์ `admin`/`operator`, รองรับ cookie `v1` เดิมเป็น admin, เพิ่ม admin route/API guard และหน้า Audit log
 - เพิ่ม audit events สำหรับ backup export, system wipe และ import แบบ sync/background รวมผลสำเร็จ/ล้มเหลว
 - V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log
@@ -148,7 +158,7 @@
 - ทำต่อบน branch `feature/traffy-track-v2`
 - V2.1 แผนที่และ V2.2 Data Quality ถูกตรวจและ push แล้วที่ commit `7b208a5`
 - V2.3 role/permission + audit log ถูก commit/push ที่ `fd34fd2`; migrations และ smoke test บน project `Traffy Follow` ผ่านแล้ว
-- ขั้นถัดไปเริ่ม V2.4 analytics ใน branch แยกจาก checkpoint V2.3
+- V2.4 และ hardening ที่ระบุด้านบนทำบน branch `feature/v2-analytics`; ขั้นถัดไปคือ visual QA จาก local, ตั้ง `CRON_SECRET`, review diff และ deploy ผ่าน staging
 
 ## Pause Checkpoint — 2026-07-12
 - กลับมาดำเนินงานต่อและตรวจ V2.3 ครบแล้ว

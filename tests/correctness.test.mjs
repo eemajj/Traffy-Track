@@ -6,6 +6,7 @@ import { getBangkokCurrentMonthRange, getBangkokTodayValue } from "../lib/report
 import { getSafeHttpsUrl } from "../lib/safe-url.ts";
 import { parseCoordinates } from "../lib/coordinates.ts";
 import { createSessionCookieValue, getSessionClaims, verifySessionCookieValue } from "../lib/session.ts";
+import { getAnalyticsPeriodDays } from "../lib/analytics-period.ts";
 
 test("duplicate tickets keep the first CSV row", () => {
   const result = dedupeTicketsById([
@@ -93,4 +94,13 @@ test("signed sessions reject expired tokens", async () => {
       process.env.APP_SESSION_SECRET = previousSecret;
     }
   }
+});
+
+test("analytics period only accepts supported windows", () => {
+  assert.equal(getAnalyticsPeriodDays("30"), 30);
+  assert.equal(getAnalyticsPeriodDays("90"), 90);
+  assert.equal(getAnalyticsPeriodDays("180"), 180);
+  assert.equal(getAnalyticsPeriodDays("365"), 90);
+  assert.equal(getAnalyticsPeriodDays(["30", "180"]), 30);
+  assert.equal(getAnalyticsPeriodDays(undefined), 90);
 });
