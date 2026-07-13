@@ -26,6 +26,10 @@
 - เพิ่ม `npm run dev:local` และ `LOCAL_DEVELOPMENT.md`; predeploy รัน tests เพิ่มแล้ว
 - QA รวมล่าสุด: tests 15/15, typecheck, lint และ git diff check ผ่าน; production build ผ่านหลังเพิ่ม Analytics ก่อนรวม hardening patches
 - Runtime QA วันที่ 2026-07-13 ผ่านสำหรับ Dashboard, Analytics 30/90 วัน, Import, Cases, Map, Report, Admin และ system health; auth redirect และ operator admin guard ทำงานถูกต้อง
+- สร้าง Supabase `Traffy Follow Staging`, apply migrations ครบ และตั้ง Vercel Preview ให้ใช้ credentials/secrets แยกจาก Production แล้ว
+- Staging QA ผ่านทุกหน้าหลัก, system health และ maintenance cron; แก้ bucket limit ให้สอดคล้อง Supabase Free Tier สูงสุด 50 MB พร้อม regression test
+- สร้าง Production backup ZIP ก่อน deploy (ประมาณ 7.95 MB), ยืนยัน migration state ครบ และ deploy commit `57d0666` ขึ้น `https://traffy-track.vercel.app` สำเร็จ
+- Production smoke test วันที่ 2026-07-13 ผ่านสำหรับ login, Analytics auth guard และ maintenance cron (`200/ok`)
 - V2.3 role/permission + audit log ผ่านการตรวจแล้ว: แยกสิทธิ์ `admin`/`operator`, รองรับ cookie `v1` เดิมเป็น admin, เพิ่ม admin route/API guard และหน้า Audit log
 - เพิ่ม audit events สำหรับ backup export, system wipe และ import แบบ sync/background รวมผลสำเร็จ/ล้มเหลว
 - V2.3 QA ผ่าน: `npm test` 7 tests, `npm run typecheck`, `npm run lint`, `npm run build`, login admin/operator, admin API `401/403/200`, admin route redirect และ Audit log
