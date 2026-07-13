@@ -4,7 +4,10 @@ import test from "node:test";
 import { isCronAuthorizationValid } from "../lib/cron-auth.ts";
 import {
   GENERATED_EXPORT_RETENTION_MS,
+  IMPORT_MAX_BYTES,
   isStorageObjectPastRetention,
+  REPORT_EXPORT_MAX_BYTES,
+  STORAGE_FREE_TIER_MAX_BYTES,
   TEMP_IMPORT_RETENTION_MS
 } from "../lib/maintenance-policy.ts";
 
@@ -46,4 +49,10 @@ test("temporary storage retention windows are conservative", () => {
 
   assert.equal(TEMP_IMPORT_RETENTION_MS, 14 * dayMs);
   assert.equal(GENERATED_EXPORT_RETENTION_MS, 7 * dayMs);
+});
+
+test("temporary bucket limits stay within the Supabase Free Tier ceiling", () => {
+  assert.equal(STORAGE_FREE_TIER_MAX_BYTES, 50 * 1024 * 1024);
+  assert.ok(IMPORT_MAX_BYTES <= STORAGE_FREE_TIER_MAX_BYTES);
+  assert.ok(REPORT_EXPORT_MAX_BYTES <= STORAGE_FREE_TIER_MAX_BYTES);
 });

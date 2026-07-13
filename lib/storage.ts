@@ -1,7 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { env } from "@/lib/env";
+import {
+  IMPORT_MAX_BYTES,
+  REPORT_EXPORT_MAX_BYTES,
+  STORAGE_FREE_TIER_MAX_BYTES
+} from "@/lib/maintenance-policy";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+
+export { IMPORT_MAX_BYTES, REPORT_EXPORT_MAX_BYTES, STORAGE_FREE_TIER_MAX_BYTES };
 
 export const IMPORT_BUCKET = "traffy-track-imports";
 export const REPORT_EVIDENCE_BUCKET = "report-evidence";
@@ -15,8 +22,6 @@ export const IMPORT_ALLOWED_TYPES = new Set([
   ""
 ]);
 
-export const IMPORT_MAX_BYTES = 80 * 1024 * 1024;
-export const REPORT_EXPORT_MAX_BYTES = 250 * 1024 * 1024;
 export const REPORT_EXPORT_SIGNED_URL_SECONDS = 10 * 60;
 
 type StorageClient = SupabaseClient;
