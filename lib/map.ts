@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { getCachedTicketFilterOptions } from "@/lib/ticket-filter-options";
 import { buildClosedStatesFilter, CLOSED_TICKET_STATES } from "@/lib/tickets";
 
 const MAP_POINT_LIMIT = 10000;
@@ -152,30 +153,10 @@ export async function getComplaintMapData(filters: MapFilters): Promise<Complain
     const state = (filters.state || "").trim();
     const dept = (filters.dept || "").trim();
 
-    const [statesResult, departmentsResult, mapTicketRows] = await Promise.all([
-      supabase.from("tickets").select("state").not("state", "is", null).order("state", { ascending: true }).limit(20000),
-      supabase.from("tickets").select("dept_list").limit(20000),
+    const [filterOptions, mapTicketRows] = await Promise.all([
+      getCachedTicketFilterOptions(),
       getMapTicketRows(supabase, { view, q, state, dept })
     ]);
-
-    if (statesResult.error) {
-      throw new Error(`โหลดรายการสถานะสำหรับแผนที่ไม่สำเร็จ: ${statesResult.error.message}`);
-    }
-
-    if (departmentsResult.error) {
-      throw new Error(`โหลดรายการฝ่ายสำหรับแผนที่ไม่สำเร็จ: ${departmentsResult.error.message}`);
-    }
-
-    const stateOptions = Array.from(
-      new Set(((statesResult.data as Array<{ state: string | null }> | null) || []).map((row) => row.state).filter(Boolean) as string[])
-    );
-    const departmentOptions = Array.from(
-      new Set(
-        (((departmentsResult.data as Array<{ dept_list: string[] | null }> | null) || []).flatMap((row) =>
-          Array.isArray(row.dept_list) ? row.dept_list : []
-        ))
-      )
-    ).sort((left, right) => left.localeCompare(right, "th"));
 
     const points = mapTicketRows.map(normalizePoint).filter(Boolean) as ComplaintMapPoint[];
 
@@ -186,8 +167,8 @@ export async function getComplaintMapData(filters: MapFilters): Promise<Complain
       state,
       dept,
       points,
-      stateOptions,
-      departmentOptions,
+      stateOptions: filterOptions.stateOptions,
+      departmentOptions: filterOptions.departmentOptions,
       missingCoordinateCount: mapTicketRows.length - points.length,
       totalMatchingCount: mapTicketRows.length,
       capped: mapTicketRows.length >= MAP_POINT_LIMIT

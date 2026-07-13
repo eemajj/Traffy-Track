@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { waitUntil } from "@vercel/functions";
 
 import { requireApiSession } from "@/lib/api-auth";
 import { createQueuedImportBatch, processImportCsv, processImportCsvFromStorage } from "@/lib/import/process";
 import { recordAuditEvent } from "@/lib/audit";
+import { TICKET_FILTER_OPTIONS_TAG } from "@/lib/ticket-filter-options";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ async function runImportJob(input: {
     revalidatePath("/dashboard");
     revalidatePath("/report");
     revalidatePath("/cases");
+    revalidateTag(TICKET_FILTER_OPTIONS_TAG);
   } catch (error) {
     await recordAuditEvent({
       action: "import.failed",
@@ -113,6 +115,7 @@ export async function POST(request: Request) {
     revalidatePath("/dashboard");
     revalidatePath("/report");
     revalidatePath("/cases");
+    revalidateTag(TICKET_FILTER_OPTIONS_TAG);
 
     return NextResponse.json(summary, {
       headers: {

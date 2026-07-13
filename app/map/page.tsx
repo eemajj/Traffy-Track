@@ -1,15 +1,9 @@
-import nextDynamic from "next/dynamic";
-
 import { AppShell } from "@/components/app-shell";
+import { ComplaintMapLoader } from "@/components/complaint-map-loader";
 import { MapFilters } from "@/components/map-filters";
 import { getComplaintMapData } from "@/lib/map";
 
 export const dynamic = "force-dynamic";
-
-const ComplaintMap = nextDynamic(() => import("@/components/complaint-map").then((module) => module.ComplaintMap), {
-  ssr: false,
-  loading: () => <div className="flex min-h-[30rem] items-center justify-center bg-surface text-sm text-muted">กำลังเตรียมแผนที่…</div>
-});
 
 type MapPageProps = {
   searchParams?: {
@@ -81,7 +75,7 @@ export default async function MapPage({ searchParams = {} }: MapPageProps) {
           </section>
 
           {data.points.length > 0 ? (
-            <ComplaintMap points={data.points} />
+            <ComplaintMapLoader points={data.points} />
           ) : (
             <section className="rounded-3xl border border-border bg-white p-10 text-center shadow-panel">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-surface text-2xl" aria-hidden="true">⌖</div>

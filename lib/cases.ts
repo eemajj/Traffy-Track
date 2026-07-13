@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { getSafeHttpsUrl } from "@/lib/safe-url";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { getCachedTicketFilterOptions } from "@/lib/ticket-filter-options";
 import { CLOSED_TICKET_STATES, buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
 
 const DEFAULT_CASES_PAGE_SIZE = 50;
@@ -255,7 +256,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const [latestBatchResult, statesResult, departmentsResult] = await Promise.all([
+    const [latestBatchResult, filterOptions] = await Promise.all([
       supabase
         .from("import_batches")
         .select("id, imported_at, filename")
@@ -263,25 +264,15 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
         .order("imported_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.from("tickets").select("state").not("state", "is", null).order("state", { ascending: true }).limit(20000),
-      supabase.rpc("dashboard_pending_by_department")
+      getCachedTicketFilterOptions()
     ]);
 
     if (latestBatchResult.error) {
       throw new Error(`โหลดรอบนำเข้าล่าสุดไม่สำเร็จ: ${latestBatchResult.error.message}`);
     }
 
-    if (statesResult.error) {
-      throw new Error(`โหลดรายการสถานะไม่สำเร็จ: ${statesResult.error.message}`);
-    }
-
-    if (departmentsResult.error) {
-      throw new Error(`โหลดรายการฝ่ายไม่สำเร็จ: ${departmentsResult.error.message}`);
-    }
-
     const latestBatch = latestBatchResult.data as { id: string; imported_at: string; filename: string | null } | null;
-    const stateOptions = Array.from(new Set(((statesResult.data as Array<{ state: string | null }> | null) || []).map((row) => row.state).filter(Boolean) as string[]));
-    const departmentOptions = (((departmentsResult.data as Array<{ dept_name: string }> | null) || []).map((row) => row.dept_name));
+    const { stateOptions, departmentOptions } = filterOptions;
 
     if (view === "reopened" || view === "status-changed") {
       if (!latestBatch) {
