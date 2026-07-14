@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { dedupeTicketsById } from "../lib/import/dedupe.ts";
@@ -73,6 +74,17 @@ test("duplicate tickets keep the first CSV row", () => {
     { ticket_id: "B-1", state: "only" }
   ]);
   assert.equal(result.duplicateRows, 2);
+});
+
+test("complaint map owns and cleans up its Leaflet instance", async () => {
+  const source = await readFile(new URL("../components/complaint-map.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /from ["']react-leaflet["']/);
+  assert.match(source, /map = L\.map\(container,/);
+  assert.match(source, /map\.remove\(\);/);
+  assert.match(source, /mapRef\.current = null;/);
+  assert.match(source, /preferCanvas: true/);
+  assert.match(source, /bindPopup\(\(\) => createPopupContent\(point\)\)/);
 });
 
 test("Bangkok report dates do not fall back to the previous UTC day", () => {

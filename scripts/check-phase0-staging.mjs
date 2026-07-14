@@ -2,10 +2,9 @@ import process from "node:process";
 
 import { createClient } from "@supabase/supabase-js";
 
+const STAGING_PROJECT_REF = "pyyoysdcedaskohiocdg";
 const projectRef = process.env.SUPABASE_PROJECT_REF;
-if (!projectRef) {
-  throw new Error("SUPABASE_PROJECT_REF is required");
-}
+if (projectRef !== STAGING_PROJECT_REF) throw new Error("Phase 0 QA is restricted to the Staging project");
 
 let input = "";
 for await (const chunk of process.stdin) {

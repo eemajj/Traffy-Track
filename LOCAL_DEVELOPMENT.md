@@ -39,6 +39,8 @@ openssl rand -hex 32
 npm run dev:local
 ```
 
+คำสั่งปกติใช้ Webpack dev mode เพื่อหลีกเลี่ยง Turbopack persistence cache เสียบน external drive หลังสลับระหว่าง `next build` และ `next dev` โดยแยกไฟล์ dev ไว้ใน `.next-dev` ส่วน production build ยังคงใช้ `.next` หากต้องการทดสอบ Turbopack ให้ใช้ `npm run dev:turbo`
+
 แล้วเปิด [http://127.0.0.1:3000/login](http://127.0.0.1:3000/login)
 
 - ถ้าตั้ง `APP_ADMIN_PASSCODE`: `APP_PASSCODE` จะเข้าเป็นเจ้าหน้าที่ และ `APP_ADMIN_PASSCODE` จะเข้าเป็นผู้ดูแลระบบ
