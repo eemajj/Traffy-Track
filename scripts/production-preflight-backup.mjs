@@ -75,7 +75,7 @@ console.log(JSON.stringify({
 }));
 
 const pageStatuses = {};
-for (const pathname of ["/dashboard", "/cases", "/report", "/admin"]) {
+for (const pathname of ["/dashboard", "/cases", "/map", "/report", "/analytics?period=180", "/import", "/admin"]) {
   const response = await fetch(`${baseUrl}${pathname}`, {
     headers: { Cookie: sessionCookie },
     redirect: "manual"

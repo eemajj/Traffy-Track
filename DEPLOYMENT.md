@@ -30,6 +30,32 @@ Set `APP_ENV` in each environment so admin screens show the current target clear
 8. Deploy production.
 9. Check `/admin` for environment, database, storage, and import job health.
 
+## Coordinated Analytics Rollout
+
+Application source that calls `analytics_radius_hotspots` must never be deployed before migrations `20260714158000` and `20260714159000` are present on Production. A normal production build cannot detect a missing remote RPC.
+
+Use this order:
+
+1. Run `npm run predeploy` on the exact release commit.
+2. Run the Production preflight backup and keep its SHA-256 output:
+
+   ```bash
+   PRODUCTION_PREFLIGHT_CONFIRM=zllbfazkhrvlfutehkyh npm run preflight:production:backup
+   ```
+3. Confirm the Supabase CLI target is the Production project ref `zllbfazkhrvlfutehkyh`. The repository may still be linked to Staging, so never infer the target from the current directory.
+4. Run a migration dry-run and confirm that only `20260714158000` and `20260714159000` are pending.
+5. Apply those migrations to Production in timestamp order.
+6. Point local environment variables at Production and run the read-only DB contract gate:
+
+   ```bash
+   PRODUCTION_PREFLIGHT_CONFIRM=zllbfazkhrvlfutehkyh npm run verify:production-db
+   ```
+
+7. Deploy the exact release commit only after the DB contract gate passes.
+8. Run authenticated HTTP smoke for `/analytics?period=180` and the generated focused `/map` URL, then verify `/api/system/health` remains `ok`.
+
+The contract gate refuses any Supabase host other than Production, verifies Analytics for 30/90/180 days twice for deterministic results, validates hotspot geometry and count reconciliation, confirms anonymous execution is denied, and checks dead/stale operations queues. It is read-only.
+
 ## Production Data Rules
 
 - Do not point preview deployments at production service-role credentials unless the change is read-only.

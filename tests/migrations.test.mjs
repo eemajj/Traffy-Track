@@ -52,6 +52,17 @@ const analyticsRadiusHotspotsMigrationUrl = new URL(
   "../supabase/migrations/20260714159000_analytics_legacy_coordinate_compatibility.sql",
   import.meta.url
 );
+const productionDbContractUrl = new URL(
+  "../scripts/check-production-db-contract.mjs",
+  import.meta.url
+);
+const mutatingStagingHarnessUrls = [
+  "../scripts/check-phase0-staging.mjs",
+  "../scripts/check-report-staging.mjs",
+  "../scripts/check-operations-staging.mjs",
+  "../scripts/check-evidence-staging.mjs",
+  "../scripts/start-staging-dev.mjs"
+].map((path) => new URL(path, import.meta.url));
 
 test("report snapshot migration keeps batch, departments, and items in one database function", async () => {
   const sql = await readFile(reportMigrationUrl, "utf8");
@@ -230,4 +241,26 @@ test("analytics hotspots use real metre distances, unique assignment, and null-s
   assert.match(sql, /'sharePercent'/);
   assert.match(sql, /revoke execute[\s\S]+from public, anon, authenticated/);
   assert.match(sql, /grant execute[\s\S]+to service_role/);
+});
+
+test("production DB contract gate refuses the wrong target and verifies the analytics release contract", async () => {
+  const script = await readFile(productionDbContractUrl, "utf8");
+
+  assert.match(script, /PRODUCTION_PREFLIGHT_CONFIRM/);
+  assert.match(script, /zllbfazkhrvlfutehkyh/);
+  assert.match(script, /refuses Supabase target/);
+  assert.match(script, /analytics_overview/);
+  assert.match(script, /analytics_radius_hotspots/);
+  assert.match(script, /JSON\.stringify\(first\.data\) === JSON\.stringify\(second\.data\)/);
+  assert.match(script, /Anonymous role unexpectedly executed/);
+  assert.match(script, /operations_health_snapshot/);
+});
+
+test("mutating staging harnesses are pinned to the exact Staging project", async () => {
+  const scripts = await Promise.all(mutatingStagingHarnessUrls.map((url) => readFile(url, "utf8")));
+
+  for (const script of scripts) {
+    assert.match(script, /STAGING_PROJECT_REF = "pyyoysdcedaskohiocdg"/);
+    assert.match(script, /projectRef !== STAGING_PROJECT_REF/);
+  }
 });
