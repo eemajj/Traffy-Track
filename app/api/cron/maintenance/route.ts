@@ -2,11 +2,25 @@ import { NextResponse } from "next/server";
 
 import { isCronAuthorizationValid } from "@/lib/cron-auth";
 import { env, hasSupabaseAdminEnv } from "@/lib/env";
-import { cleanupTemporaryStorage } from "@/lib/maintenance";
+import {
+  cleanupTemporaryStorage,
+  recoverStaleImportJobs,
+  reconcileStorageDeletionOutbox
+} from "@/lib/maintenance";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function runMaintenanceStage<T>(name: string, run: () => Promise<T>) {
+  try {
+    return { status: "ok" as const, result: await run() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${name} failed`;
+    console.error("Scheduled maintenance stage failed", { stage: name, message });
+    return { status: "degraded" as const, error: message };
+  }
+}
 
 export async function GET(request: Request) {
   if (!env.cronSecret) {
@@ -32,22 +46,38 @@ export async function GET(request: Request) {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const [keepaliveResult, cleanup] = await Promise.all([
-      supabase.from("tickets").select("ticket_id").limit(1),
-      cleanupTemporaryStorage(supabase)
-    ]);
+    const keepaliveResult = await supabase.from("tickets").select("ticket_id").limit(1);
 
     if (keepaliveResult.error) {
       throw new Error(`Supabase keepalive failed: ${keepaliveResult.error.message}`);
     }
 
+    const staleImports = await runMaintenanceStage("stale-import-recovery", () =>
+      recoverStaleImportJobs(supabase)
+    );
+    const storageDeletionOutbox = await runMaintenanceStage("storage-deletion-outbox", () =>
+      reconcileStorageDeletionOutbox(supabase)
+    );
+    const temporaryCleanup = await runMaintenanceStage("temporary-storage-cleanup", () =>
+      cleanupTemporaryStorage(supabase)
+    );
+    const degraded = [staleImports, storageDeletionOutbox, temporaryCleanup]
+      .some((stage) => stage.status === "degraded");
+
     return NextResponse.json(
       {
-        status: "ok",
+        status: degraded ? "degraded" : "ok",
         checkedAt: new Date().toISOString(),
-        cleanup
+        stages: {
+          staleImports,
+          storageDeletionOutbox,
+          temporaryStorage: temporaryCleanup
+        }
       },
-      { headers: { "Cache-Control": "no-store" } }
+      {
+        status: degraded ? 500 : 200,
+        headers: { "Cache-Control": "no-store" }
+      }
     );
   } catch (error) {
     console.error("Scheduled maintenance failed", error);

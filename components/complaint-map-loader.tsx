@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-import type { ComplaintMapPoint } from "@/lib/map";
+import type { ComplaintMapPoint, MapFocus } from "@/lib/map";
 
 const ClientComplaintMap = dynamic(
   () => import("@/components/complaint-map").then((module) => module.ComplaintMap),
@@ -16,6 +16,6 @@ const ClientComplaintMap = dynamic(
   }
 );
 
-export function ComplaintMapLoader({ points }: { points: ComplaintMapPoint[] }) {
-  return <ClientComplaintMap points={points} />;
+export function ComplaintMapLoader({ points, focus }: { points: ComplaintMapPoint[]; focus?: MapFocus | null }) {
+  return <ClientComplaintMap points={points} focus={focus} />;
 }

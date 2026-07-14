@@ -15,16 +15,13 @@ function shouldIgnoreClick(event: MouseEvent<HTMLAnchorElement>) {
 
 export function NavigationProgress() {
   const pathname = usePathname();
-  const [isPending, setIsPending] = useState(false);
+  const [pendingFromPathname, setPendingFromPathname] = useState<string | null>(null);
+  const isPending = pendingFromPathname === pathname;
 
   useEffect(() => {
-    const handleStart = () => setIsPending(true);
+    const handleStart = () => setPendingFromPathname(pathname);
     window.addEventListener("app:navigation-start", handleStart);
     return () => window.removeEventListener("app:navigation-start", handleStart);
-  }, []);
-
-  useEffect(() => {
-    setIsPending(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -32,7 +29,7 @@ export function NavigationProgress() {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => setIsPending(false), 8000);
+    const timeoutId = window.setTimeout(() => setPendingFromPathname(null), 8000);
     return () => window.clearTimeout(timeoutId);
   }, [isPending]);
 
@@ -61,7 +58,7 @@ export function PendingNavLink({ href, label }: PendingNavLinkProps) {
 
         window.dispatchEvent(new Event("app:navigation-start"));
       }}
-      className={`nav-pill rounded-2xl border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-brand/35 hover:bg-white hover:text-brand hover:shadow-hover ${
+      className={`nav-pill inline-flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-brand/35 hover:bg-white hover:text-brand hover:shadow-hover ${
         isActive ? "border-brand/25 bg-brand/10 text-brand" : "border-border bg-surface text-ink"
       }`}
     >

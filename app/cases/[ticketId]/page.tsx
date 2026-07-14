@@ -7,9 +7,9 @@ import { CaseTimelineItem, getCaseDetailData, getCaseStatusTone } from "@/lib/ca
 export const dynamic = "force-dynamic";
 
 type CaseDetailPageProps = {
-  params: {
+  params: Promise<{
     ticketId: string;
-  };
+  }>;
 };
 
 function formatDateTime(value: string | null) {
@@ -42,7 +42,17 @@ function formatChangeField(value: string) {
     state: "สถานะ",
     org_response: "หน่วยงาน",
     last_activity: "เวลาอัปเดต",
-    star: "คะแนนดาว"
+    timestamp: "วันที่รับเรื่อง",
+    star: "คะแนนดาว",
+    type: "ประเภท",
+    comment: "รายละเอียด",
+    photo_url: "รูปภาพ",
+    address: "ที่อยู่",
+    subdistrict: "แขวง",
+    district: "เขต",
+    province: "จังหวัด",
+    hashtag: "แฮชแท็ก",
+    coords: "พิกัด"
   };
 
   return labels[value] || value;
@@ -109,7 +119,8 @@ function Timeline({ title, description, items }: { title: string; description: s
   );
 }
 
-export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
+export default async function CaseDetailPage(props: CaseDetailPageProps) {
+  const params = await props.params;
   const ticketId = decodeURIComponent(params.ticketId);
   const data = await getCaseDetailData(ticketId);
 

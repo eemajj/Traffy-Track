@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import {
@@ -14,9 +14,9 @@ import {
 export const dynamic = "force-dynamic";
 
 type AnalyticsPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     period?: string | string[];
-  };
+  }>;
 };
 
 const ageBucketMeta: Record<
@@ -36,6 +36,14 @@ function formatNumber(value: number) {
 
 function formatDecimal(value: number) {
   return new Intl.NumberFormat("th-TH", { maximumFractionDigits: 1 }).format(value);
+}
+
+function formatCoordinate(value: number) {
+  return new Intl.NumberFormat("th-TH", {
+    minimumFractionDigits: 5,
+    maximumFractionDigits: 5,
+    useGrouping: false
+  }).format(value);
 }
 
 function formatDate(value: string) {
@@ -210,7 +218,6 @@ function PendingAgeChart({ buckets }: { buckets: PendingAgeBucket[] }) {
 }
 
 function AnalyticsContent({ data }: { data: AnalyticsReadyData }) {
-  const hotspotMax = Math.max(1, ...data.hotspots.map((hotspot) => hotspot.totalCount));
   const departmentMax = Math.max(1, ...data.departmentResolution.map((department) => department.averageHours));
 
   return (
@@ -248,7 +255,6 @@ function AnalyticsContent({ data }: { data: AnalyticsReadyData }) {
           <Metric label="คงค้างปัจจุบัน" value={formatNumber(data.summary.pendingNow)} helper={`พิกัดพร้อมใช้ ${formatDecimal(data.summary.coordinateCoveragePercent)}%`} tone="text-warning" />
         </dl>
       </section>
-
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <section className="rounded-3xl bg-white p-5 shadow-panel sm:p-6">
           <div className="mb-5">
@@ -269,27 +275,34 @@ function AnalyticsContent({ data }: { data: AnalyticsReadyData }) {
           </Link>
         </section>
       </div>
-
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-3xl bg-white p-5 shadow-panel sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-ink">พื้นที่ที่รับเรื่องหนาแน่น</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">จัดกลุ่มจุดพิกัดในกรอบประมาณ 500 เมตร ภายในช่วงเวลาที่เลือก</p>
+              <h2 className="text-xl font-semibold text-ink">จุดรับเรื่องที่กระจุกตัว</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+                รวมเรื่องที่รับเข้าในช่วง {formatNumber(data.periodDays)} วันตามระยะจริงรัศมี 500 เมตร โดยหนึ่งเรื่องนับได้เพียงกลุ่มเดียว
+              </p>
             </div>
             <Link href="/map?view=all" className="shrink-0 rounded-2xl border border-border bg-white px-4 py-2 text-sm font-semibold text-brand hover:border-brand/30 hover:bg-brand/5">
               เปิดแผนที่
             </Link>
           </div>
 
-          {data.hotspots.length === 0 ? (
+          {data.hotspotsUnavailableMessage ? (
+            <div className="mt-5 rounded-2xl border border-warning/20 bg-warning/10 p-4 text-sm leading-6 text-warning">
+              ข้อมูลจุดกระจุกตัวยังไม่พร้อมใช้งานชั่วคราว แต่ข้อมูลวิเคราะห์ส่วนอื่นยังใช้งานได้
+            </div>
+          ) : data.hotspots.length === 0 ? (
             <div className="mt-5">
               <EmptyState title="ยังไม่พบกลุ่มพื้นที่ในช่วงนี้">ลองขยายเป็น 180 วัน หรือตรวจว่าข้อมูลนำเข้ามีพิกัดครบถ้วน</EmptyState>
             </div>
           ) : (
             <ol className="mt-5 space-y-4">
               {data.hotspots.map((hotspot, index) => {
-                const width = Math.max(4, (hotspot.totalCount / hotspotMax) * 100);
+                const pendingPercent = hotspot.totalCount > 0 ? (hotspot.pendingCount / hotspot.totalCount) * 100 : 0;
+                const closedPercent = hotspot.totalCount > 0 ? (hotspot.closedCount / hotspot.totalCount) * 100 : 0;
+                const mapHref = `/map?view=all&period=${encodeURIComponent(data.periodDays)}&focusLat=${encodeURIComponent(hotspot.lat)}&focusLng=${encodeURIComponent(hotspot.lng)}&focusRadius=${encodeURIComponent(hotspot.radiusMeters)}`;
                 return (
                   <li key={`${hotspot.lat}-${hotspot.lng}`} className="rounded-2xl bg-surface p-4">
                     <div className="flex items-start gap-3">
@@ -297,16 +310,42 @@ function AnalyticsContent({ data }: { data: AnalyticsReadyData }) {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                           <div>
-                            <h3 className="text-sm font-semibold text-ink">แขวง{hotspot.subdistrict.replace(/^แขวง/, "")}</h3>
-                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{hotspot.sampleAddress || `${formatDecimal(hotspot.lat)}, ${formatDecimal(hotspot.lng)}`}</p>
+                            <h3 className="text-sm font-semibold leading-5 text-ink">
+                              {hotspot.sampleAddress || `บริเวณแขวง${hotspot.subdistrict.replace(/^แขวง/, "")}`}
+                            </h3>
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              แขวง{hotspot.subdistrict.replace(/^แขวง/, "")} · รัศมี {formatNumber(hotspot.radiusMeters)} ม. · {formatCoordinate(hotspot.lat)}, {formatCoordinate(hotspot.lng)}
+                            </p>
                           </div>
-                          <p className="whitespace-nowrap text-sm font-semibold text-ink">
-                            {formatNumber(hotspot.totalCount)} เรื่อง <span className="font-normal text-warning">· ค้าง {formatNumber(hotspot.pendingCount)}</span>
+                          <p className="whitespace-nowrap text-sm font-semibold text-brand">
+                            {formatNumber(hotspot.totalCount)} เรื่อง
                           </p>
                         </div>
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white" aria-hidden="true">
-                          <div className="h-full rounded-full bg-brand" style={{ width: `${width}%` }} />
+                        <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+                          <div className="flex items-baseline gap-1">
+                            <dt className="text-muted">ยังเปิด</dt>
+                            <dd className="font-semibold text-warning">{formatNumber(hotspot.pendingCount)}</dd>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                            <dt className="text-muted">ปิดแล้ว</dt>
+                            <dd className="font-semibold text-success">{formatNumber(hotspot.closedCount)}</dd>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                            <dt className="text-muted">สัดส่วนเรื่องรับเข้าช่วงนี้</dt>
+                            <dd className="font-semibold text-ink">{formatDecimal(hotspot.sharePercent)}%</dd>
+                          </div>
+                        </dl>
+                        <div
+                          className="mt-3 flex h-2 overflow-hidden rounded-full bg-white"
+                          role="img"
+                          aria-label={`ยังเปิด ${formatNumber(hotspot.pendingCount)} เรื่อง ปิดแล้ว ${formatNumber(hotspot.closedCount)} เรื่อง`}
+                        >
+                          {hotspot.closedCount > 0 ? <span className="h-full bg-success" style={{ width: `${closedPercent}%` }} /> : null}
+                          {hotspot.pendingCount > 0 ? <span className="h-full bg-warning" style={{ width: `${pendingPercent}%` }} /> : null}
                         </div>
+                        <Link href={mapHref} className="mt-3 inline-flex min-h-11 items-center text-xs font-semibold text-brand hover:text-brand-deep">
+                          ดูตำแหน่งและวงรัศมีบนแผนที่ →
+                        </Link>
                       </div>
                     </div>
                   </li>
@@ -349,7 +388,6 @@ function AnalyticsContent({ data }: { data: AnalyticsReadyData }) {
           )}
         </section>
       </div>
-
       <section className="rounded-2xl border border-brand/15 bg-brand/5 px-5 py-4 text-sm leading-6 text-brand">
         <p className="font-semibold">วิธีอ่านตัวเลขเวลาปิดเรื่อง</p>
         <p className="mt-1 max-w-4xl">
@@ -361,7 +399,8 @@ function AnalyticsContent({ data }: { data: AnalyticsReadyData }) {
   );
 }
 
-export default async function AnalyticsPage({ searchParams = {} }: AnalyticsPageProps) {
+export default async function AnalyticsPage(props: AnalyticsPageProps) {
+  const searchParams = (await props.searchParams) ?? {};
   const periodDays = getAnalyticsPeriodDays(searchParams.period);
   const data = await getAnalyticsData(periodDays);
 

@@ -13,10 +13,12 @@ export async function createReportBatchAction(formData: FormData) {
 
   const reportDate = String(formData.get("report_date") || "");
   const note = String(formData.get("note") || "").trim() || null;
+  const idempotencyKey = String(formData.get("idempotency_key") || "");
 
   const result = await createReportBatch({
     reportDate,
-    note
+    note,
+    idempotencyKey
   });
 
   revalidatePath("/report");

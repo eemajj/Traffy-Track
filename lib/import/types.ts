@@ -20,6 +20,8 @@ export const requiredCsvColumns = [
 
 export type RequiredCsvColumn = (typeof requiredCsvColumns)[number];
 
+export type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
+
 export type CsvRow = Record<RequiredCsvColumn, string>;
 
 export type TicketRecord = {
@@ -43,13 +45,7 @@ export type TicketRecord = {
   lng: number | null;
 };
 
-export type ExistingTicketSnapshot = {
-  ticket_id: string;
-  state: string | null;
-  org_response: string | null;
-  last_activity: string | null;
-  star: number | null;
-};
+export type ExistingTicketSnapshot = TicketRecord;
 
 export type TicketHistoryInsert = {
   ticket_id: string;
@@ -95,6 +91,7 @@ export type ImportPreview = {
   duplicateTicketIdRows: number;
   invalidTimestampRows: number;
   invalidCoordsRows: number;
+  invalidStarRows: number;
   missingCoordinateRows: number;
   invalidStateRows: number;
   blankOrgResponseRows: number;

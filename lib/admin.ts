@@ -3,6 +3,7 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { getDeploymentInfo, hasSupabaseAdminEnv } from "@/lib/env";
 import { getRecentImportJobs } from "@/lib/import/process";
 import type { ImportJob } from "@/lib/import/types";
+import { getOperationsHealth, type OperationsHealthSnapshot } from "@/lib/maintenance";
 import { archiveReportBatches } from "@/lib/report";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import {
@@ -22,7 +23,11 @@ const ADMIN_TABLES = [
   "report_archives"
 ] as const;
 
-const BACKUP_TABLES = ADMIN_TABLES;
+const BACKUP_TABLES = [
+  ...ADMIN_TABLES,
+  "report_evidence_versions",
+  "report_evidence_status_events"
+] as const;
 const BACKUP_BUCKETS = [REPORT_EVIDENCE_BUCKET] as const;
 const BACKUP_CSV_TABLES = ["tickets", "ticket_history", "report_batch_items", "report_archives"] as const;
 const PAGE_SIZE = 1000;
@@ -66,6 +71,7 @@ export type AdminOverviewData =
         activeCount: number;
         failedCount: number;
       };
+      operations: OperationsHealthSnapshot;
       deployment: {
         appEnvironment: string;
         vercelEnvironment: string;
@@ -118,7 +124,7 @@ function rowsToCsv(rows: Array<Record<string, unknown>>) {
   ].join("\n")}`;
 }
 
-async function fetchAllRows(table: AdminTableName) {
+async function fetchAllRows(table: string) {
   const supabase = createSupabaseAdminClient();
   const rows: Array<Record<string, unknown>> = [];
 
@@ -210,7 +216,7 @@ async function loadAdminOverview(): Promise<AdminOverviewData> {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const [tableResults, storageResults, recentImportJobs] = await Promise.all([
+    const [tableResults, storageResults, recentImportJobs, operations] = await Promise.all([
       Promise.all(
         ADMIN_TABLES.map(async (table) => {
           const result = await supabase.from(table).select("*", { count: "exact", head: true });
@@ -243,7 +249,8 @@ async function loadAdminOverview(): Promise<AdminOverviewData> {
           }
         })
       ),
-      getRecentImportJobs(6).catch(() => [])
+      getRecentImportJobs(6).catch(() => []),
+      getOperationsHealth(supabase)
     ]);
 
     return {
@@ -259,9 +266,10 @@ async function loadAdminOverview(): Promise<AdminOverviewData> {
       },
       imports: {
         recentJobs: recentImportJobs,
-        activeCount: recentImportJobs.filter((job) => job.status === "queued" || job.status === "running").length,
-        failedCount: recentImportJobs.filter((job) => job.status === "failed").length
+        activeCount: operations.imports.active,
+        failedCount: operations.imports.failed
       },
+      operations,
       deployment: getDeploymentInfo(),
       limits: {
         database: "Supabase Free tier โดยทั่วไปให้ฐานข้อมูล 500 MB ต่อ project",
@@ -293,7 +301,7 @@ export async function createSystemBackupExport() {
 
   const supabase = createSupabaseAdminClient();
   const generatedAt = new Date();
-  const tableEntries: Array<{ table: AdminTableName; rows: Array<Record<string, unknown>> }> = [];
+  const tableEntries: Array<{ table: (typeof BACKUP_TABLES)[number]; rows: Array<Record<string, unknown>> }> = [];
 
   for (const table of BACKUP_TABLES) {
     tableEntries.push({
@@ -412,11 +420,6 @@ export async function wipeSystemData(input: { mode: "reports" | "all"; confirmat
       throw new Error(`ล้างข้อมูลตาราง ${table} ไม่สำเร็จ: ${deleteResult.error.message}`);
     }
   };
-  const storageResults =
-    input.mode === "all"
-      ? [await removeStoragePrefix(REPORT_EVIDENCE_BUCKET), await removeStoragePrefix(IMPORT_BUCKET)]
-      : [await removeStoragePrefix(REPORT_EVIDENCE_BUCKET)];
-
   if (input.mode === "reports") {
     await deleteAllRows("report_batches", "id");
   } else {
@@ -434,7 +437,38 @@ export async function wipeSystemData(input: { mode: "reports" | "all"; confirmat
     }
   }
 
-  revalidateTag(ADMIN_OVERVIEW_CACHE_TAG);
+  // Evidence objects are deliberately not removed here. Deleting report
+  // departments cascades to immutable evidence versions, whose trigger enqueues
+  // exact object paths in storage_deletion_outbox in the same DB transaction.
+  // This ordering guarantees a DB failure can never leave live rows pointing at
+  // files that this wipe already removed.
+  const evidenceOutboxResult = await supabase
+    .from("storage_deletion_outbox")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["pending", "processing", "failed"])
+    .eq("bucket", REPORT_EVIDENCE_BUCKET);
+
+  const storageResults: Array<Record<string, unknown>> = [{
+    bucket: REPORT_EVIDENCE_BUCKET,
+    deletionMode: "outbox",
+    queuedObjects: evidenceOutboxResult.error ? null : evidenceOutboxResult.count || 0,
+    error: evidenceOutboxResult.error?.message || null
+  }];
+  if (input.mode === "all") {
+    try {
+      storageResults.push(await removeStoragePrefix(IMPORT_BUCKET));
+    } catch (error) {
+      // DB deletion already committed. Report temporary-file cleanup as degraded
+      // without telling the operator that the database wipe itself failed.
+      storageResults.push({
+        bucket: IMPORT_BUCKET,
+        deletionMode: "direct_after_db",
+        error: error instanceof Error ? error.message : "ลบไฟล์นำเข้าชั่วคราวไม่สำเร็จ"
+      });
+    }
+  }
+
+  revalidateTag(ADMIN_OVERVIEW_CACHE_TAG, { expire: 0 });
 
   return {
     status: "ready" as const,

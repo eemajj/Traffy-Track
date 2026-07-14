@@ -18,8 +18,11 @@ export type AnalyticsHotspot = {
   sampleAddress: string | null;
   lat: number;
   lng: number;
+  radiusMeters: number;
   totalCount: number;
   pendingCount: number;
+  closedCount: number;
+  sharePercent: number;
 };
 
 export type DepartmentResolution = {
@@ -48,6 +51,7 @@ export type AnalyticsReadyData = {
   };
   trend: AnalyticsTrendPoint[];
   hotspots: AnalyticsHotspot[];
+  hotspotsUnavailableMessage: string | null;
   departmentResolution: DepartmentResolution[];
   pendingAgeBuckets: PendingAgeBucket[];
 };
@@ -85,6 +89,43 @@ function toRecords(value: unknown) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function normalizeHotspots(value: unknown): AnalyticsHotspot[] {
+  return toRecords(value).flatMap((row) => {
+    const lat = toNumber(row.lat, Number.NaN);
+    const lng = toNumber(row.lng, Number.NaN);
+    const radiusMeters = toNumber(row.radiusMeters, Number.NaN);
+    const totalCount = Math.max(0, Math.trunc(toNumber(row.totalCount)));
+    const pendingCount = Math.min(totalCount, Math.max(0, Math.trunc(toNumber(row.pendingCount))));
+
+    if (
+      !Number.isFinite(lat)
+      || !Number.isFinite(lng)
+      || !Number.isFinite(radiusMeters)
+      || lat < 13.3
+      || lat > 14.2
+      || lng < 100.2
+      || lng > 101.1
+      || radiusMeters < 100
+      || radiusMeters > 2000
+      || totalCount < 1
+    ) {
+      return [];
+    }
+
+    return [{
+      subdistrict: toStringValue(row.subdistrict, "ไม่ระบุแขวง"),
+      sampleAddress: row.sampleAddress === null ? null : toStringValue(row.sampleAddress) || null,
+      lat,
+      lng,
+      radiusMeters,
+      totalCount,
+      pendingCount,
+      closedCount: totalCount - pendingCount,
+      sharePercent: Math.min(100, Math.max(0, toNumber(row.sharePercent)))
+    }];
+  });
+}
+
 function normalizeAnalyticsPayload(payload: unknown, fallbackPeriod: AnalyticsPeriodDays): AnalyticsReadyData {
   if (!isRecord(payload)) {
     throw new Error("รูปแบบข้อมูลวิเคราะห์จากฐานข้อมูลไม่ถูกต้อง");
@@ -114,14 +155,8 @@ function normalizeAnalyticsPayload(payload: unknown, fallbackPeriod: AnalyticsPe
       createdCount: toNumber(row.createdCount),
       closedCount: toNumber(row.closedCount)
     })),
-    hotspots: toRecords(payload.hotspots).map((row) => ({
-      subdistrict: toStringValue(row.subdistrict, "ไม่ระบุแขวง"),
-      sampleAddress: row.sampleAddress === null ? null : toStringValue(row.sampleAddress) || null,
-      lat: toNumber(row.lat),
-      lng: toNumber(row.lng),
-      totalCount: toNumber(row.totalCount),
-      pendingCount: toNumber(row.pendingCount)
-    })),
+    hotspots: normalizeHotspots(payload.hotspots),
+    hotspotsUnavailableMessage: toStringValue(payload.hotspotsUnavailableMessage) || null,
     departmentResolution: toRecords(payload.departmentResolution).map((row) => ({
       departmentName: toStringValue(row.departmentName, "ไม่ระบุฝ่าย"),
       closedCount: toNumber(row.closedCount),
@@ -143,15 +178,29 @@ export async function getAnalyticsData(periodDays: AnalyticsPeriodDays): Promise
     noStore();
 
     const supabase = createSupabaseAdminClient();
-    const { data, error } = await supabase.rpc("analytics_overview", {
-      p_days: periodDays
-    });
+    const [overviewResult, hotspotsResult] = await Promise.all([
+      supabase.rpc("analytics_overview", { p_days: periodDays }),
+      supabase.rpc("analytics_radius_hotspots", {
+        p_days: periodDays,
+        p_radius_m: 500,
+        p_limit: 8
+      })
+    ]);
 
-    if (error) {
-      throw new Error(`โหลดข้อมูลวิเคราะห์ไม่สำเร็จ: ${error.message}`);
+    if (overviewResult.error) {
+      throw new Error(`โหลดข้อมูลวิเคราะห์ไม่สำเร็จ: ${overviewResult.error.message}`);
     }
-
-    return normalizeAnalyticsPayload(data, periodDays);
+    const overview = isRecord(overviewResult.data) ? overviewResult.data : {};
+    return normalizeAnalyticsPayload(
+      {
+        ...overview,
+        hotspots: hotspotsResult.error ? [] : hotspotsResult.data,
+        hotspotsUnavailableMessage: hotspotsResult.error
+          ? `โหลดกลุ่มพื้นที่ไม่สำเร็จ: ${hotspotsResult.error.message}`
+          : null
+      },
+      periodDays
+    );
   } catch (error) {
     return {
       status: "unavailable",

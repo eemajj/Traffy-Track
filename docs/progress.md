@@ -1,5 +1,145 @@
 # Progress
 
+## Urgent Remediation Plan — 2026-07-14
+
+เป้าหมายเร่งด่วนคือยกระดับระบบจาก operational MVP ให้มี data correctness, transactional integrity และ workflow ที่ตรวจสอบย้อนหลังได้ โดยแบ่งเป็นก้อนที่ deploy และ rollback แยกกันได้
+
+### Phase 0 — Data Correctness (เริ่มดำเนินการแล้ว)
+- [x] ป้องกัน import ซ้อนกันด้วย partial unique index ที่ฐานข้อมูล และแสดง error ที่เข้าใจได้เมื่อมีงานกำลังทำอยู่
+- [x] ตรวจทุกแถวก่อน apply: reject field mismatch, ticket ID/state ว่าง, timestamp/coords/star ที่ไม่ถูกต้อง พร้อมสรุปจำนวนและตัวอย่างแถวที่ต้องแก้
+- [x] กำหนด field-authority policy: optional column ที่ไม่มากับไฟล์ไม่ล้างข้อมูลเดิม และการเปลี่ยน comment/address/type/photo/coords/hashtag อัปเดตพร้อม history ได้
+- [x] ทำ pending predicate กลางให้เคส state ว่างไม่หายจาก Dashboard/Case/Map/Report/Health/Analytics และ reject state ว่างในการนำเข้ารอบใหม่
+- [x] เพิ่ม regression tests ทั้ง unit และ Staging integration สำหรับ malformed row, missing optional columns, non-tracked field updates, null state, concurrent import guard และ transactional rollback
+
+### Phase 1 — Transactional Integrity
+- [x] ย้ายการสร้าง report batch/departments/items เข้า database transaction เดียว พร้อม import/version watermark, consistent ticket lock และ active-import guard
+- [x] เพิ่ม idempotency key, unique item constraint และ composite foreign key ป้องกัน double-submit/รายการซ้ำ/orphan department
+- [x] เปลี่ยน evidence เป็น append-only versions พร้อม checksum, actor, original filename และสถานะ approve/reject
+- [x] เพิ่ม outbox/reconciler สำหรับลบ Storage เพื่อไม่ให้ DB กับไฟล์แยกสถานะกัน
+
+### Phase 2 — Reliability, Security & Recovery
+- [ ] เปลี่ยน background import จาก `waitUntil` เป็น durable worker/cron consumer พร้อม lease, heartbeat, retry และ stale-job recovery
+- [ ] เปลี่ยน backup เป็น consistent snapshot/streaming artifact พร้อม encryption, checksum, retention และ audit
+- [ ] เพิ่ม per-user identity, login rate limit/MFA และ capability/department scope หากขยายผู้ใช้หลายคน
+- [ ] ขยาย audit log ให้ครอบคลุม login, report, evidence, export, restore และ privileged failure
+- [ ] เพิ่ม integration/E2E tests สำหรับ API authorization, RLS, concurrent import, report transaction และ restore integrity
+
+### Phase 3 — Workflow & UX Hardening
+- [ ] ทำ assignment/triage queue สำหรับเคสรอจัดฝ่าย พร้อม accept/reject suggestion, local override, owner และ next action
+- [ ] เพิ่ม report lifecycle: Draft → Sent → Partially returned → Complete → Locked พร้อม due date และ follow-up history
+- [ ] ปรับ Dashboard ให้นำด้วยงานที่ต้องทำต่อ ไม่ใช่ metric cards อย่างเดียว
+- [x] แก้ WCAG: warning contrast, form labels, live-region/error focus, table captions และ touch targets
+- [ ] ปรับ mobile navigation, accessible map/list, marker clustering และ preserve filter/return context
+- [ ] ลด card/shadow/motion ที่ไม่สื่อ interaction แล้วรัน `$impeccable audit` ซ้ำ
+
+### QA Release Gate — 2026-07-14
+
+สถานะปัจจุบัน: **DEPLOYED TO PRODUCTION** — coordinated rollout migrations `20260714153000`–`20260714157000` และ Next.js 16 release สำเร็จเมื่อ 2026-07-14; post-deploy health, auth guards, pages, row counts, evidence history และ operations queues ผ่านทั้งหมด
+
+- [x] P0: ผูกการ withdraw กับ evidence version UUID ที่ผู้ตรวจเห็นจริง พร้อม stale conflict `409`, เหตุผล และ confirmation
+- [x] P0: ให้ delayed completion retry ส่ง projection ของ current version จริง และรายงาน `autoApproved` เฉพาะการอนุมัติที่เกิดใน request นั้น
+- [x] P0: ทำ restore path ที่เข้ากับ immutable evidence privileges และพิสูจน์ restore drill แบบไม่ทิ้ง partial state
+- [x] P0: เปลี่ยน wipe เป็น DB-first/outbox เพื่อไม่ให้ live row ชี้ Storage object ที่ถูกลบก่อน transaction สำเร็จ
+- [x] P1 (Staging): ปิด/revoke legacy review/withdraw RPC เพื่อให้ exact-version และ reject/withdraw reason 5–1,000 ตัวอักษรเป็น invariant ที่ bypass ไม่ได้; Production รอ coordinated rollout
+- [x] P1: เพิ่ม HTTP integration tests สำหรับ auth `401/403`, malformed UUID `400`, stale UUID `409`, auto-approve และ idempotent retry
+- [x] P1: อัปเดต Next.js เป็น `16.2.10` และแก้ PostCSS/UUID dependency chain; `npm audit` เหลือ 0 vulnerabilities และ production build ผ่าน
+- [ ] P1: เพิ่ม durable import recovery, outbox dead-letter/visibility และ cron/queue heartbeat ใน health check — recovery/dead-letter/metrics/heartbeat เสร็จแล้ว เหลือ durable consumer ที่รับประกัน execution แทน `waitUntil`
+- [x] P1 UI/A11y: warning contrast, skip link, labels, live-region/error recovery, disabled pagination และ touch targets
+
+ผล QA baseline:
+
+- Automated: tests `38/38`, typecheck, lint, Next.js 16 production build และ `git diff --check` ผ่าน
+- Staging Evidence `19/19`, Evidence HTTP `12/12`, Report transaction `10/10`, Phase 0 `7/7` และ Operations/heartbeat `7/7` ผ่าน พร้อม cleanup ข้อมูล QA สำเร็จ
+- Evidence correctness: ผ่าน exact-version conflict, rejection/withdrawal requirement, approved-only completion, delayed retry, immutable metadata, concurrent lease และ storage cleanup
+- Operations correctness: health snapshot, anon denial, dead-letter ที่ attempt limit, stale import recovery/audit, running heartbeat และ heartbeat authorization ผ่านบน Staging
+- Restore drill: backup ZIP 7,530,696 bytes ผ่าน integrity check/dry-run และ restore Staging สำเร็จ — 13,998 tickets, 28,042 history, 6 import batches พร้อม counts หลัง restore ตรง manifest
+- Impeccable audit: Accessibility `2/4`, Performance `2/4`, Responsive `3/4`, Theming `2/4`, Anti-patterns `2/4` รวม `11/20`
+- Dependency audit: `0 vulnerabilities`
+- Browser click-through: ยังไม่รัน เพราะ in-app Browser ไม่มี backend/session พร้อมใช้งานในรอบ QA นี้
+
+### Analytics Hotspot Correction — 2026-07-14
+
+- [x] เปลี่ยนจาก grid `0.005°` เป็นระยะจริงด้วย PostGIS/UTM รัศมี 500 เมตร
+- [x] บังคับศูนย์กลางห่างกันมากกว่า 1,000 เมตรเพื่อไม่ให้วงทับกัน และให้หนึ่ง ticket อยู่ได้เพียง hotspot เดียว
+- [x] รองรับพิกัด legacy ที่เก็บ `lat/lng` สลับกันโดย normalize ตอนอ่าน ไม่ rewrite ข้อมูลจริง
+- [x] แก้สถานะคงค้างให้รวม `state IS NULL` และแสดงยอดเปิด/ปิด/สัดส่วนอย่างมีความหมาย
+- [x] เพิ่มลิงก์จาก hotspot ไปแผนที่ โดยกรองช่วงเวลาและรัศมีเดียวกับ Analytics พร้อมรองรับพิกัดเก่าและใหม่
+- [x] ป้องกัน RPC hotspot ล้มแล้วทำ Analytics ทั้งหน้าล้ม และ validate payload ก่อน render
+- [x] Apply migrations `20260714158000` และ forward-fix `20260714159000` บน Staging แล้ว
+- [x] Staging runtime QA ผ่าน 30/90/180 วัน: ได้ 8 hotspots, ผล deterministic, วงไม่ซ้อน, counts reconcile และ anonymous ถูก deny
+- [x] Automated tests `39/39`, typecheck, lint, production build, `git diff --check` และ HTTP smoke `/analytics` → focused `/map` ผ่าน
+- [ ] Production ยังไม่ apply migrations/deploy ชุด Analytics นี้ รอ coordinated rollout รอบถัดไป
+
+### Convenience Features — P0 Delivery
+- [x] เปลี่ยนความครบของรายงานเป็น approved-only และแยก Missing / Pending review / Rejected / Approved ใน list, detail, summary และ archive รุ่นใหม่
+- [x] ผูกการ approve/reject กับ evidence version UUID ที่ผู้ตรวจเปิดจริง พร้อม stale conflict และ idempotent retry
+- [x] บังคับเหตุผลเมื่อตีกลับ แสดงเหตุผลให้เจ้าหน้าที่เห็น และเก็บ note ตรงทั้ง version projection และ status event
+- [x] ป้องกัน delayed upload completion ของไฟล์เก่าดึง current evidence pointer ย้อนจากเวอร์ชันใหม่
+- [x] เพิ่มทางเลือก Admin “อัปโหลดและอนุมัติทันที” โดยยังเก็บ upload/approve audit แยกกัน และ fallback เป็นรอตรวจหาก auto-approve ไม่สำเร็จ
+- [ ] ทำ Triage assignment พร้อม manual override และ report creation gate
+- [ ] ทำ Role-based Action Center สำหรับงานวันนี้
+- [ ] เพิ่ม report lifecycle, owner, due date และ next action
+- [ ] เพิ่ม import correction artifact ที่ดาวน์โหลดได้
+- [ ] เพิ่ม Admin queue control, retry/dead-letter และ maintenance heartbeat
+- [ ] เพิ่ม Safe withdraw พร้อม grace period และ Undo
+
+### Delivery Rule
+- Phase 0 ต้องผ่าน tests, typecheck, lint, build และ Staging import regression ก่อนเริ่ม Phase 1
+- ทุก migration ต้อง apply Staging ก่อน Production และต้องมี rollback/forward-fix note
+- ห้ามรวมการเปลี่ยน data logic, destructive workflow และ visual redesign ไว้ใน deployment เดียวกัน
+
+### Production Coordinated Rollout Checklist
+- [x] ยืนยันไม่มี active import/outbox job และเก็บ backup สดพร้อมตรวจ ZIP, manifest, immutable evidence และ Storage files
+- [x] ลด compatibility window ด้วย Production prebuilt artifact; ระบบยังไม่มี dedicated maintenance mode จึงคงเป็น follow-up ด้าน operations
+- [x] apply migrations `20260714153000`–`20260714157000` ตามลำดับ แล้ว deploy Production prebuilt artifact ทันที
+- [x] smoke test login, Dashboard, Cases, Report, Admin, auth guard และ system health
+- [x] ตรวจ outbox dead/stale leases, stale queued/running imports, row counts และ evidence history หลัง deploy
+- [x] ยืนยัน rollback rule: ห้าม rollback แอปเก่าอย่างเดียวหลัง legacy RPC ถูก revoke; ใช้ forward-fix หรือ re-grant ชั่วคราวพร้อม audit
+
+### Execution Log — 2026-07-14
+- Production rollout สำเร็จ: Vercel deployment `dpl_7HuC8VkQ12VEeKJPXTyEkg5uvNAN` และ alias `https://traffy-track.vercel.app`; migrations Production ตรง local ถึง `20260714157000`
+- Production predeploy backup แบบครบ schema ขนาด 11,810,428 bytes รวม evidence versions/events และ Storage 3 objects; ZIP/manifest/files ผ่าน integrity check
+- Production post-deploy counts ไม่เปลี่ยน: tickets 14,105, history 18,852, imports 4, report batches 2, departments 7, items 196, evidence versions 3 และ evidence events 3
+- Production post-deploy health `200 ok`, Dashboard/Cases/Report/Admin `200`, unauthenticated health `401`, outbox dead/actionable/stale leases เป็น 0 และ active/stale imports เป็น 0
+- Vercel Preview deployment ผ่าน Evidence HTTP `12/12` กับ Staging ก่อน Production; แก้ Preview variables ที่เดิมเป็นค่าว่างให้ชี้ Staging และคง Production environment แยกจาก Preview
+- Actual restore drill บน Staging สำเร็จจาก backup สด โดยสคริปต์ hard-refuse Production; เพิ่ม verification SHA-256 สำหรับ Storage object หลัง restore
+- เพิ่ม Evidence HTTP harness แบบ Staging-only ผ่าน 12 checks ครอบคลุม `401/403/400/409`, auto-approve, reject reason และ idempotent retries พร้อม cleanup ใน `finally`
+- Apply `20260714157000_import_heartbeat.sql` บน Staging แล้ว; running import ส่ง heartbeat ตาม bounded checkpoints, stale recovery ใช้ heartbeat และ health แยก stale queued/running
+- Apply migrations `20260714153000`–`20260714155000` บน Staging แล้ว; พบ runtime ambiguity ที่ `claim_storage_deletions.attempts` และแก้แบบ forward-only ด้วย `20260714156000_operations_attempts_ambiguity.sql` โดยไม่แก้ migration history ที่ apply ไปแล้ว
+- Staging regression หลัง forward-fix ผ่านครบ: Evidence `19/19`, Report `10/10`, Phase 0 `7/7`, Operations `5/5` และ cleanup สำเร็จ
+- เพิ่ม exact-version withdraw, เหตุผล 5–1,000 ตัวอักษร, idempotent retry, DB-first wipe/outbox, restricted evidence restore RPC, dead-letter, stale import recovery และ operations health snapshot
+- อัปเกรด Next.js `16.2.10`, ESLint 9 และ dependency overrides; tests `38/38`, typecheck, lint, build, diff check ผ่าน และ `npm audit` เป็น 0 vulnerabilities
+- Dev monitor รอบ QA เปิดที่ `http://127.0.0.1:3000` โดยชี้ Staging แบบ in-memory environment override; authenticated smoke ผ่าน `/dashboard`, `/report`, `/cases` และ health `200 ok`
+- เพิ่ม `lib/import/integrity.ts` เป็นจุดกลางสำหรับ full-row validation, optional-field preservation และ full business-field diff
+- ปรับ import preview และ apply ให้ใช้กติกาเดียวกัน รวมถึงหยุดไฟล์ที่ parse ผิดแทนการนำเข้าต่อแบบเงียบ
+- เพิ่ม migrations `20260714100000_import_single_active.sql`, `20260714110000_pending_state_null_safe.sql`, `20260714130000_transactional_report_snapshot.sql`, `20260714150000_evidence_versions_outbox.sql` และ `20260714151000_evidence_privilege_hardening.sql` (apply Staging และ Production แล้ว)
+- เพิ่มชื่อฟิลด์ประวัติใหม่ใน Dashboard และ Case detail เพื่อไม่แสดงชื่อ technical field แก่ผู้ใช้
+- เปลี่ยนหลักฐานเป็น version ที่แก้ย้อนหลังไม่ได้: ตรวจชนิดไฟล์จาก magic bytes, เก็บ SHA-256/ชื่อเดิม/ผู้ดำเนินการ, รองรับ pending/approved/rejected/withdrawn และเก็บ status event แยกเป็น timeline
+- จำกัด approve/reject/withdraw ให้ admin, ซ่อนปุ่มจัดการจาก operator และบันทึก audit สำหรับ upload request/completion, download, review และ withdraw
+- เพิ่ม upload intent อายุ 15 นาที และ leased deletion outbox พร้อม retry/backoff, reference guard และ reconciler ใน maintenance cron; การเปลี่ยนไฟล์หรือลบรอบรายงานไม่ลบ Storage แบบ synchronous อีกต่อไป
+- ขยาย backup/restore ให้รักษา evidence versions และ status events โดยไม่ restore งาน outbox/intent ที่เป็น transient state
+- Staging Phase 0 ผ่าน: single-active constraint, active-slot release, PostgREST/Dashboard/Analytics null-state, transactional apply/rollback และ cleanup test rows
+- Staging Phase 1 ผ่าน: atomic snapshot, idempotent retry, import watermark, null-state, department dedupe, snapshot immutability, unique/FK guards, anon denial, active-import guard และ cleanup test rows
+- Staging Evidence ผ่าน: verified metadata/checksum, idempotent attach, immutable metadata, append-only versions/events, admin-only review/withdraw, terminal review, anon denial, expired intent, cascade queue, concurrent lease claim, Storage cleanup และ cleanup test rows
+- เพิ่ม migration `20260714152000_evidence_review_correctness.sql` สำหรับ exact-version review v2, rejection invariant, approved-only rollup, semantic archive counts และ delayed-retry pointer guard (apply Staging และ Production แล้ว)
+- Staging Evidence Correctness ผ่าน: delayed retry ไม่ย้อน pointer, stale version conflict, rejection reason required, approved-only completion, terminal review, append-only events, outbox lease และ cleanup test rows
+- Production rollout วันที่ 2026-07-14 ผ่าน: apply migrations `20260714100000`–`20260714152000`, history ตรง local, evidence rollup/version/projection อ่านได้, `/report` ตอบ 200 และ system health ตอบ `ok`
+- Verification ล่าสุดผ่าน: unit tests 26/26, typecheck, lint, production build และ `git diff --check`; migration history ของ Staging/Production ตรงกันถึง `20260714152000`
+- Dev monitor เปิดที่ `http://127.0.0.1:3000`; ขั้นถัดไปคือทบทวน Phase 1 rollout แล้ว apply migrations ทั้งชุดไป Production แบบมี maintenance window
+
+### Migration Recovery Note
+- `20260714100000`: หาก active slot ค้าง ให้ตรวจ job ก่อน mark `failed`; forward-fix เป็นหลัก ไม่ drop unique index ระหว่างมี traffic
+- `20260714110000`: หาก predicate มีปัญหา ให้ deploy function/query correction เพิ่ม หลีกเลี่ยง rollback ที่ทำให้ null-state หายอีกครั้ง
+- `20260714130000`: application และ RPC เป็น contract เดียวกัน ต้อง rollback application ก่อนฐานข้อมูล; production incident ให้ forward-fix function/constraint ก่อน และเก็บ watermark columns ไว้เพื่อ audit
+- `20260714150000`: ห้ามลบ version/event tables เพื่อ rollback เพราะเป็น audit history; หาก reconciler มีปัญหาให้หยุด cron แล้ว forward-fix lease/RPC โดยคง outbox rows ไว้ retry
+- `20260714151000`: เป็น privilege hardening สำหรับ installation ที่เคย grant service role แบบกว้าง; rollback เฉพาะเมื่อ RPC ใช้งานไม่ได้และต้องมี compensating audit ห้ามคืน direct mutation เป็นสถานะถาวร
+- `20260714152000`: deploy DB ก่อน application ได้เพราะคง review RPC v1 ระหว่าง rolling deployment; application ใหม่ใช้ v2 เท่านั้น หากมี incident ให้ rollback application ไป v1 ชั่วคราวและ forward-fix v2/rollup ห้าม backfill archive เดิมเป็น approved เพราะพิสูจน์ผลตรวจย้อนหลังไม่ได้
+- `20260714153000`: restore immutable evidence ผ่าน service-role RPC เท่านั้น; restore ต้องใช้ target ว่างและหยุด maintenance worker เพื่อไม่ให้ outbox แข่งกับการคืนข้อมูล
+- `20260714154000`: migration นี้ revoke legacy review/withdraw RPC จึงต้อง coordinated rollout กับ application ใหม่; ห้าม apply Production ก่อนแอปพร้อมใช้ exact-version v2
+- `20260714155000`: หาก recovery worker มีปัญหาให้หยุด cron และคง outbox/dead rows ไว้ตรวจสอบ; อย่าลด attempts หรือ retry dead jobs อัตโนมัติ
+- `20260714156000`: เป็น forward-fix ของ runtime name ambiguity ใน claim RPC; ห้ามย้อนกลับไปใช้ function จาก `20260714155000`
+- `20260714157000`: application ใหม่เขียน `heartbeat_at` และเรียก heartbeat RPC; deploy migration ก่อน application ได้ แต่ยังไม่ถือเป็น durable queue และต้องคง stale recovery/ไฟล์ source สำหรับ manual retry
+
 ## Current Status
 - V2.4 Analytics เสร็จแล้ว: แนวโน้มรายสัปดาห์, พื้นที่หนาแน่น, อายุเรื่องคงค้าง, เวลาเฉลี่ย/มัธยฐานปิดเรื่อง และสรุปแยกฝ่าย พร้อมช่วง 30/90/180 วัน
 - V2.2 preview เพิ่มคำเตือน semantic duplicate, หมวดงานที่อาจเกี่ยวข้อง และระดับที่ควรเร่งตรวจสอบแบบไม่แก้ข้อมูลอัตโนมัติแล้ว

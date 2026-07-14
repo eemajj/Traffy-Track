@@ -5,13 +5,14 @@ import { AppShell } from "@/components/app-shell";
 import { ReportDepartmentChecklist } from "@/app/report/[batchId]/report-department-checklist";
 import { getReportBatchDetailData } from "@/lib/report";
 import { BANGKOK_TIME_ZONE } from "@/lib/report-date";
+import { getCurrentSessionClaims } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 type ReportBatchDetailPageProps = {
-  params: {
+  params: Promise<{
     batchId: string;
-  };
+  }>;
 };
 
 function formatDate(value: string) {
@@ -33,8 +34,12 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-export default async function ReportBatchDetailPage({ params }: ReportBatchDetailPageProps) {
-  const data = await getReportBatchDetailData(params.batchId);
+export default async function ReportBatchDetailPage(props: ReportBatchDetailPageProps) {
+  const params = await props.params;
+  const [data, claims] = await Promise.all([
+    getReportBatchDetailData(params.batchId),
+    getCurrentSessionClaims()
+  ]);
 
   if (data.status === "not_found") {
     notFound();
@@ -43,7 +48,7 @@ export default async function ReportBatchDetailPage({ params }: ReportBatchDetai
   const departmentEvidenceKey =
     data.status === "ready"
       ? data.departments
-          .map((department) => `${department.id}:${department.evidence_uploaded_at || ""}`)
+          .map((department) => `${department.id}:${department.current_evidence_version_id || ""}:${department.evidence_review_status || ""}`)
           .join("|")
       : params.batchId;
 
@@ -85,7 +90,7 @@ export default async function ReportBatchDetailPage({ params }: ReportBatchDetai
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
             <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
               <p className="text-sm text-muted">วันที่ของรอบ</p>
               <p className="mt-2 text-2xl font-semibold text-ink">{formatDate(data.batch.report_date)}</p>
@@ -98,9 +103,21 @@ export default async function ReportBatchDetailPage({ params }: ReportBatchDetai
               <p className="text-sm text-muted">รายการเรื่องในรอบ</p>
               <p className="mt-2 text-2xl font-semibold text-ink">{data.itemCount}</p>
             </section>
-            <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
-              <p className="text-sm text-muted">หลักฐานที่อัปโหลดแล้ว</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{data.evidenceUploadedCount}</p>
+            <section className="rounded-2xl border border-border bg-surface p-5">
+              <p className="text-sm text-muted">ยังไม่ส่ง</p>
+              <p className="mt-2 text-2xl font-semibold text-warning">{data.evidenceMissingCount}</p>
+            </section>
+            <section className="rounded-2xl border border-border bg-surface p-5">
+              <p className="text-sm text-muted">รอตรวจ</p>
+              <p className="mt-2 text-2xl font-semibold text-warning">{data.evidencePendingReviewCount}</p>
+            </section>
+            <section className="rounded-2xl border border-danger/20 bg-danger/5 p-5">
+              <p className="text-sm text-danger">ตีกลับให้แก้</p>
+              <p className="mt-2 text-2xl font-semibold text-danger">{data.evidenceRejectedCount}</p>
+            </section>
+            <section className="rounded-2xl border border-success/20 bg-success/5 p-5">
+              <p className="text-sm text-success">อนุมัติแล้ว</p>
+              <p className="mt-2 text-2xl font-semibold text-success">{data.evidenceApprovedCount}/{data.departmentCount}</p>
             </section>
           </div>
 
@@ -112,8 +129,14 @@ export default async function ReportBatchDetailPage({ params }: ReportBatchDetai
               dept_name: department.dept_name,
               evidence_file_url: department.evidence_file_url,
               evidence_uploaded_at: department.evidence_uploaded_at,
+              current_evidence_version_id: department.current_evidence_version_id,
+              evidence_review_status: department.evidence_review_status,
+              evidence_review_note: department.evidence_review_note,
+              evidence_version_number: department.evidence_version_number,
+              evidence_original_filename: department.evidence_original_filename,
               itemCount: department.itemCount
             }))}
+            canManageEvidence={claims?.role === "admin"}
           />
 
           <section className="space-y-4">

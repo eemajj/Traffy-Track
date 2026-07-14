@@ -59,7 +59,7 @@ export async function hasValidSessionCookie() {
     return false;
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   return verifySessionCookieValue(cookieStore.get(env.authCookieName)?.value);
 }
 
@@ -68,7 +68,7 @@ export async function getCurrentSessionClaims() {
     return null;
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   return getSessionClaims(cookieStore.get(env.authCookieName)?.value);
 }
 

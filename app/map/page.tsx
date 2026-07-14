@@ -1,25 +1,59 @@
 import { AppShell } from "@/components/app-shell";
 import { ComplaintMapLoader } from "@/components/complaint-map-loader";
 import { MapFilters } from "@/components/map-filters";
-import { getComplaintMapData } from "@/lib/map";
+import { getComplaintMapData, MapFocus } from "@/lib/map";
 
 export const dynamic = "force-dynamic";
 
 type MapPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     view?: string;
     q?: string;
     state?: string;
     dept?: string;
-  };
+    focusLat?: string;
+    focusLng?: string;
+    focusRadius?: string;
+    period?: string;
+  }>;
 };
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("th-TH").format(value);
 }
 
-export default async function MapPage({ searchParams = {} }: MapPageProps) {
-  const data = await getComplaintMapData(searchParams);
+function getMapFocus(searchParams: Awaited<NonNullable<MapPageProps["searchParams"]>>): MapFocus | null {
+  if (!searchParams.focusLat?.trim() || !searchParams.focusLng?.trim() || !searchParams.period?.trim()) {
+    return null;
+  }
+
+  const lat = Number(searchParams.focusLat);
+  const lng = Number(searchParams.focusLng);
+  const radiusMeters = Number(searchParams.focusRadius || 500);
+  const periodDays = Number(searchParams.period);
+
+  if (
+    !Number.isFinite(lat)
+    || !Number.isFinite(lng)
+    || !Number.isFinite(radiusMeters)
+    || lat < -90
+    || lat > 90
+    || lng < -180
+    || lng > 180
+    || radiusMeters < 100
+    || radiusMeters > 2000
+    || ![30, 90, 180].includes(periodDays)
+  ) {
+    return null;
+  }
+
+  return { lat, lng, radiusMeters, periodDays: periodDays as MapFocus["periodDays"] };
+}
+
+export default async function MapPage(props: MapPageProps) {
+  const searchParams = (await props.searchParams) ?? {};
+  const focus = getMapFocus(searchParams);
+  const data = await getComplaintMapData(searchParams, focus);
 
   return (
     <AppShell title="แผนที่จุดร้องเรียน" description="ดูการกระจายตัวของเรื่องร้องเรียนบนแผนที่ และเปิดรายละเอียดเคสจากจุดที่สนใจ">
@@ -72,10 +106,15 @@ export default async function MapPage({ searchParams = {} }: MapPageProps) {
               {data.missingCoordinateCount > 0 ? <span className="font-semibold text-warning">ไม่มีพิกัด {formatNumber(data.missingCoordinateCount)} เรื่อง</span> : null}
               {data.capped ? <span className="font-semibold text-warning">แสดงผลสูงสุด 10,000 จุด</span> : null}
             </div>
+            {focus ? (
+              <p className="mt-3 rounded-xl bg-brand/5 px-4 py-3 text-sm font-medium text-brand">
+                แสดงเรื่องที่รับเข้าในช่วง {formatNumber(focus.periodDays)} วัน ภายในวงรัศมี {formatNumber(focus.radiusMeters)} เมตรเดียวกับหน้า Analytics
+              </p>
+            ) : null}
           </section>
 
           {data.points.length > 0 ? (
-            <ComplaintMapLoader points={data.points} />
+            <ComplaintMapLoader points={data.points} focus={focus} />
           ) : (
             <section className="rounded-3xl border border-border bg-white p-10 text-center shadow-panel">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-surface text-2xl" aria-hidden="true">⌖</div>

@@ -4,12 +4,13 @@ import { LoginForm } from "@/app/login/login-form";
 import { getSafeNextPath, hasValidSessionCookie } from "@/lib/auth";
 
 type LoginPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     next?: string;
-  };
+  }>;
 };
 
-export default async function LoginPage({ searchParams }: LoginPageProps) {
+export default async function LoginPage(props: LoginPageProps) {
+  const searchParams = await props.searchParams;
   if (await hasValidSessionCookie()) {
     redirect("/dashboard");
   }

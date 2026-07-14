@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 
-import { ComplaintMapPoint } from "@/lib/map";
+import { ComplaintMapPoint, MapFocus } from "@/lib/map";
 
 const DEFAULT_CENTER: [number, number] = [13.75, 100.35];
 
@@ -20,12 +20,25 @@ function getMarkerColor(state: string | null) {
   return "#c98322";
 }
 
-function MapViewport({ points, revision }: { points: ComplaintMapPoint[]; revision: number }) {
+function MapViewport({ points, focus, revision }: { points: ComplaintMapPoint[]; focus?: MapFocus | null; revision: number }) {
   const map = useMap();
 
   useEffect(() => {
     const fitToPoints = () => {
       map.invalidateSize();
+
+      if (focus) {
+        const latDelta = focus.radiusMeters / 110574;
+        const lngDelta = focus.radiusMeters / (111320 * Math.cos((focus.lat * Math.PI) / 180));
+        map.fitBounds(
+          [
+            [focus.lat - latDelta, focus.lng - lngDelta],
+            [focus.lat + latDelta, focus.lng + lngDelta]
+          ],
+          { padding: [32, 32], maxZoom: 16 }
+        );
+        return;
+      }
 
       if (points.length === 0) {
         map.setView(DEFAULT_CENTER, 12);
@@ -53,7 +66,7 @@ function MapViewport({ points, revision }: { points: ComplaintMapPoint[]; revisi
       window.clearTimeout(retryTimer);
       observer.disconnect();
     };
-  }, [map, points, revision]);
+  }, [focus, map, points, revision]);
 
   return null;
 }
@@ -66,14 +79,16 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-export function ComplaintMap({ points }: { points: ComplaintMapPoint[] }) {
+export function ComplaintMap({ points, focus }: { points: ComplaintMapPoint[]; focus?: MapFocus | null }) {
   const [viewportRevision, setViewportRevision] = useState(0);
 
   return (
     <div className="complaint-map-shell relative" aria-label="แผนที่จุดร้องเรียน">
       <button
         type="button"
-        onClick={() => setViewportRevision((current) => current + 1)}
+        onClick={() => {
+          setViewportRevision((current) => current + 1);
+        }}
         className="absolute right-3 top-3 z-10 min-h-11 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-ink shadow-sm hover:border-brand/35 hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         จัดกรอบทุกจุด
@@ -83,7 +98,14 @@ export function ComplaintMap({ points }: { points: ComplaintMapPoint[] }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapViewport points={points} revision={viewportRevision} />
+        <MapViewport points={points} focus={viewportRevision === 0 ? focus : null} revision={viewportRevision} />
+        {focus ? (
+          <Circle
+            center={[focus.lat, focus.lng]}
+            radius={focus.radiusMeters}
+            pathOptions={{ color: "#00744b", fillColor: "#00744b", fillOpacity: 0.12, weight: 2 }}
+          />
+        ) : null}
         {points.map((point) => (
           <CircleMarker
             key={point.ticket_id}

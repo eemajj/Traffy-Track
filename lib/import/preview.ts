@@ -6,6 +6,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase";
 import { IMPORT_BUCKET } from "@/lib/storage";
 import { parseCoordinates } from "@/lib/coordinates";
 import { analyzeDataQualitySignals, createEmptyDataQualitySignals } from "@/lib/data-quality";
+import { getTicketFieldChanges, preserveMissingOptionalFields } from "@/lib/import/integrity";
+import type { ExistingTicketSnapshot } from "@/lib/import/types";
 
 const PREVIEW_BYTES = 512 * 1024;
 const PREVIEW_MAX_ROWS = 300;
@@ -34,14 +36,6 @@ function isInvalidCoords(value: string | undefined) {
 
   const coords = parseCoordinates(normalized);
   return coords.lat === null || coords.lng === null;
-}
-
-function areTimestampValuesEqual(left: string | null, right: string | null) {
-  if (!left && !right) return true;
-  if (!left || !right) return false;
-  const leftTime = new Date(left).getTime();
-  const rightTime = new Date(right).getTime();
-  return Number.isNaN(leftTime) || Number.isNaN(rightTime) ? left === right : leftTime === rightTime;
 }
 
 function estimateRows(input: {
@@ -108,6 +102,7 @@ export async function previewImportCsvFromStorage(input: {
       duplicateTicketIdRows: 0,
       invalidTimestampRows: 0,
       invalidCoordsRows: 0,
+      invalidStarRows: 0,
       missingCoordinateRows: 0,
       invalidStateRows: 0,
       blankOrgResponseRows: 0,
@@ -125,6 +120,7 @@ export async function previewImportCsvFromStorage(input: {
   let duplicateTicketIdRows = 0;
   let invalidTimestampRows = 0;
   let invalidCoordsRows = 0;
+  let invalidStarRows = 0;
   let missingCoordinateRows = 0;
   let invalidStateRows = 0;
   let blankOrgResponseRows = 0;
@@ -154,6 +150,11 @@ export async function previewImportCsvFromStorage(input: {
       missingCoordinateRows += 1;
     }
 
+    const star = row.star.trim();
+    if (star && (!/^-?\d+$/.test(star) || !Number.isSafeInteger(Number(star)))) {
+      invalidStarRows += 1;
+    }
+
     if (!row.state.trim()) {
       invalidStateRows += 1;
     }
@@ -172,7 +173,9 @@ export async function previewImportCsvFromStorage(input: {
   if (ticketIds.length > 0) {
     const existingResult = await supabase
       .from("tickets")
-      .select("ticket_id, state, org_response, last_activity, star")
+      .select(
+        "ticket_id, type, comment, photo_url, address, subdistrict, district, province, timestamp, last_activity, state, org_response, org_list, dept_list, star, hashtag, lat, lng"
+      )
       .in("ticket_id", ticketIds);
 
     if (existingResult.error) {
@@ -180,24 +183,20 @@ export async function previewImportCsvFromStorage(input: {
     }
 
     const existingById = new Map(
-      ((existingResult.data as Array<{ ticket_id: string; state: string | null; org_response: string | null; last_activity: string | null; star: number | null }> | null) || [])
+      ((existingResult.data as ExistingTicketSnapshot[] | null) || [])
         .map((row) => [row.ticket_id, row])
     );
 
-    for (const ticket of normalizedRows) {
-      const existing = existingById.get(ticket.ticket_id);
+    for (const sourceTicket of normalizedRows) {
+      const existing = existingById.get(sourceTicket.ticket_id);
       if (!existing) {
         sampledNewTicketRows += 1;
         continue;
       }
 
       sampledExistingTicketRows += 1;
-      if (
-        (existing.state || null) !== ticket.state ||
-        (existing.org_response || null) !== ticket.org_response ||
-        !areTimestampValuesEqual(existing.last_activity, ticket.last_activity) ||
-        (existing.star ?? null) !== ticket.star
-      ) {
+      const ticket = preserveMissingOptionalFields(sourceTicket, existing, columnAnalysis.columnMap);
+      if (getTicketFieldChanges(existing, ticket).length > 0) {
         sampledChangedTicketRows += 1;
       }
     }
@@ -217,6 +216,7 @@ export async function previewImportCsvFromStorage(input: {
     duplicateTicketIdRows,
     invalidTimestampRows,
     invalidCoordsRows,
+    invalidStarRows,
     missingCoordinateRows,
     invalidStateRows,
     blankOrgResponseRows,
@@ -225,6 +225,13 @@ export async function previewImportCsvFromStorage(input: {
     sampledChangedTicketRows,
     dataQualitySignals,
     parseWarnings,
-    canImport: columnAnalysis.missingRequiredColumns.length === 0 && blankTicketIdRows < sampledRows.length
+    canImport:
+      columnAnalysis.missingRequiredColumns.length === 0 &&
+      parsed.errors.length === 0 &&
+      blankTicketIdRows === 0 &&
+      invalidTimestampRows === 0 &&
+      invalidCoordsRows === 0 &&
+      invalidStarRows === 0 &&
+      invalidStateRows === 0
   };
 }

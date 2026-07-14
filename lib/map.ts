@@ -3,7 +3,8 @@ import { unstable_noStore as noStore } from "next/cache";
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { getCachedTicketFilterOptions } from "@/lib/ticket-filter-options";
-import { buildClosedStatesFilter, CLOSED_TICKET_STATES } from "@/lib/tickets";
+import { buildPendingStatesOrFilter, CLOSED_TICKET_STATES } from "@/lib/tickets";
+import { getBangkokTodayValue } from "@/lib/report-date";
 
 const MAP_POINT_LIMIT = 10000;
 const MAP_PAGE_SIZE = 1000;
@@ -28,6 +29,13 @@ export type ComplaintMapPoint = {
   lat: number;
   lng: number;
   last_activity: string | null;
+};
+
+export type MapFocus = {
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  periodDays: 30 | 90 | 180;
 };
 
 export type ComplaintMapData =
@@ -55,7 +63,8 @@ type MapTicketRow = Omit<ComplaintMapPoint, "dept_list" | "lat" | "lng"> & {
 
 async function getMapTicketRows(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
-  filters: { view: MapView; q: string; state: string; dept: string }
+  filters: { view: MapView; q: string; state: string; dept: string },
+  focus?: MapFocus | null
 ) {
   const rows: MapTicketRow[] = [];
 
@@ -65,8 +74,26 @@ async function getMapTicketRows(
       .select(MAP_TICKET_FIELDS)
       .order("ticket_id", { ascending: true });
 
+    if (focus) {
+      const latDelta = focus.radiusMeters / 110574;
+      const lngDelta = focus.radiusMeters / (111320 * Math.cos((focus.lat * Math.PI) / 180));
+      const bangkokToday = getBangkokTodayValue();
+      const endAt = new Date(`${bangkokToday}T00:00:00+07:00`);
+      endAt.setUTCDate(endAt.getUTCDate() + 1);
+      const startAt = new Date(endAt);
+      startAt.setUTCDate(startAt.getUTCDate() - focus.periodDays);
+
+      const canonicalBounds = `and(lat.gte.${focus.lat - latDelta},lat.lte.${focus.lat + latDelta},lng.gte.${focus.lng - lngDelta},lng.lte.${focus.lng + lngDelta})`;
+      const legacySwappedBounds = `and(lat.gte.${focus.lng - lngDelta},lat.lte.${focus.lng + lngDelta},lng.gte.${focus.lat - latDelta},lng.lte.${focus.lat + latDelta})`;
+
+      query = query
+        .gte("timestamp", startAt.toISOString())
+        .lt("timestamp", endAt.toISOString())
+        .or(`${canonicalBounds},${legacySwappedBounds}`);
+    }
+
     if (filters.view === "pending" || filters.view === "unassigned") {
-      query = query.not("state", "in", buildClosedStatesFilter());
+      query = query.or(buildPendingStatesOrFilter());
     }
 
     if (filters.view === "closed") {
@@ -119,8 +146,11 @@ function normalizeView(value: string | undefined): MapView {
 }
 
 function normalizePoint(row: MapTicketRow): ComplaintMapPoint | null {
-  const lat = typeof row.lat === "number" ? row.lat : Number(row.lat);
-  const lng = typeof row.lng === "number" ? row.lng : Number(row.lng);
+  const rawLat = typeof row.lat === "number" ? row.lat : Number(row.lat);
+  const rawLng = typeof row.lng === "number" ? row.lng : Number(row.lng);
+  const coordinatesAreLegacySwapped = rawLat > 90 && rawLat <= 180 && rawLng >= -90 && rawLng <= 90;
+  const lat = coordinatesAreLegacySwapped ? rawLng : rawLat;
+  const lng = coordinatesAreLegacySwapped ? rawLat : rawLng;
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return null;
@@ -139,7 +169,18 @@ function normalizePoint(row: MapTicketRow): ComplaintMapPoint | null {
   };
 }
 
-export async function getComplaintMapData(filters: MapFilters): Promise<ComplaintMapData> {
+function distanceMeters(point: ComplaintMapPoint, focus: MapFocus) {
+  const earthRadiusMeters = 6371008.8;
+  const lat1 = (point.lat * Math.PI) / 180;
+  const lat2 = (focus.lat * Math.PI) / 180;
+  const deltaLat = ((focus.lat - point.lat) * Math.PI) / 180;
+  const deltaLng = ((focus.lng - point.lng) * Math.PI) / 180;
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.asin(Math.sqrt(a));
+}
+
+export async function getComplaintMapData(filters: MapFilters, focus?: MapFocus | null): Promise<ComplaintMapData> {
   if (!hasSupabaseAdminEnv()) {
     return { status: "missing_env" };
   }
@@ -155,10 +196,13 @@ export async function getComplaintMapData(filters: MapFilters): Promise<Complain
 
     const [filterOptions, mapTicketRows] = await Promise.all([
       getCachedTicketFilterOptions(),
-      getMapTicketRows(supabase, { view, q, state, dept })
+      getMapTicketRows(supabase, { view, q, state, dept }, focus)
     ]);
 
-    const points = mapTicketRows.map(normalizePoint).filter(Boolean) as ComplaintMapPoint[];
+    const normalizedPoints = mapTicketRows.map(normalizePoint).filter(Boolean) as ComplaintMapPoint[];
+    const points = focus
+      ? normalizedPoints.filter((point) => distanceMeters(point, focus) <= focus.radiusMeters + 1)
+      : normalizedPoints;
 
     return {
       status: "ready",
@@ -169,8 +213,8 @@ export async function getComplaintMapData(filters: MapFilters): Promise<Complain
       points,
       stateOptions: filterOptions.stateOptions,
       departmentOptions: filterOptions.departmentOptions,
-      missingCoordinateCount: mapTicketRows.length - points.length,
-      totalMatchingCount: mapTicketRows.length,
+      missingCoordinateCount: focus ? 0 : mapTicketRows.length - normalizedPoints.length,
+      totalMatchingCount: focus ? points.length : mapTicketRows.length,
       capped: mapTicketRows.length >= MAP_POINT_LIMIT
     };
   } catch (error) {

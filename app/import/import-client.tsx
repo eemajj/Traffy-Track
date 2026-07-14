@@ -35,6 +35,7 @@ type ImportPreview = {
   duplicateTicketIdRows: number;
   invalidTimestampRows: number;
   invalidCoordsRows: number;
+  invalidStarRows: number;
   missingCoordinateRows: number;
   invalidStateRows: number;
   blankOrgResponseRows: number;
@@ -222,7 +223,9 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
     const warnings: string[] = [];
 
     if (preview.missingOptionalColumns.length > 0) {
-      warnings.push(`ไม่พบคอลัมน์เสริม: ${formatColumnList(preview.missingOptionalColumns)} ระบบยังนำเข้าได้ แต่ค่าช่องนี้จะว่าง`);
+      warnings.push(
+        `ไม่พบคอลัมน์เสริม: ${formatColumnList(preview.missingOptionalColumns)} ระบบยังนำเข้าได้ โดยเรื่องเดิมจะเก็บค่าเดิมไว้ ส่วนเรื่องใหม่จะไม่มีค่าในช่องเหล่านี้`
+      );
     }
 
     if (preview.blankTicketIdRows > 0) {
@@ -239,6 +242,10 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
 
     if (preview.invalidCoordsRows > 0) {
       warnings.push(`พบพิกัดที่อ่านไม่ได้ในตัวอย่าง ${formatNumber(preview.invalidCoordsRows)} แถว`);
+    }
+
+    if (preview.invalidStarRows > 0) {
+      warnings.push(`พบคะแนนที่ไม่ใช่จำนวนเต็มในตัวอย่าง ${formatNumber(preview.invalidStarRows)} แถว`);
     }
 
     if (preview.missingCoordinateRows > 0) {
@@ -539,18 +546,18 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
         </div>
 
         {requestState === "uploading" || requestState === "success" || requestState === "error" ? (
-          <div
-            className="mt-5 rounded-2xl border border-border bg-surface p-4"
-            role="status"
-            aria-live="polite"
-            aria-label={`ความคืบหน้าการนำเข้า ${importProgress}%`}
-          >
+          <div className="mt-5 rounded-2xl border border-border bg-surface p-4">
             <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-semibold text-ink">{formatStageLabel(importStage)}</p>
-              <p className="font-mono text-sm font-semibold text-brand">{importProgress}%</p>
+              <p className="text-sm font-semibold text-ink" role="status" aria-live="polite">{formatStageLabel(importStage)}</p>
+              <p className="font-mono text-sm font-semibold text-brand" aria-hidden="true">{importProgress}%</p>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-surface-strong">
               <div
+                role="progressbar"
+                aria-label="ความคืบหน้าการนำเข้า"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={importProgress}
                 className={`motion-progress h-full rounded-full transition-all duration-500 ${
                   requestState === "error" ? "bg-danger" : requestState === "success" ? "bg-success" : "bg-brand"
                 }`}
@@ -568,7 +575,15 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
               <p className="font-mono text-sm font-semibold text-muted">{importProgress}%</p>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-surface-strong">
-              <div className="motion-progress h-full rounded-full bg-brand/45" style={{ width: `${importProgress}%` }} />
+              <div
+                role="progressbar"
+                aria-label="ความคืบหน้าการตรวจไฟล์"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={importProgress}
+                className="motion-progress h-full rounded-full bg-brand/45"
+                style={{ width: `${importProgress}%` }}
+              />
             </div>
           </div>
         ) : null}
@@ -766,7 +781,7 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
       ) : null}
 
       {errorMessage ? (
-        <section className="rounded-[28px] border border-danger/20 bg-danger/5 p-6">
+        <section className="rounded-[28px] border border-danger/20 bg-danger/5 p-6" role="alert" aria-live="assertive">
           <h2 className="text-lg font-semibold text-danger">นำเข้าข้อมูลไม่สำเร็จ</h2>
           <p className="mt-2 text-sm leading-6 text-danger/90">{errorMessage}</p>
         </section>
@@ -816,7 +831,7 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
               <p className="mt-1 font-semibold text-ink">{result.duplicateRows}</p>
             </div>
             <div className="rounded-2xl border border-border bg-surface px-4 py-3">
-              <p className="text-muted">field ที่เปลี่ยนในเรื่องเดิม</p>
+              <p className="text-muted">ช่องข้อมูลที่เปลี่ยนในเรื่องเดิม</p>
               <p className="mt-1 font-semibold text-ink">{result.changedFields}</p>
             </div>
           </div>
@@ -836,7 +851,7 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
           <div>
             <h2 className="text-xl font-semibold tracking-[-0.01em]">ประวัติรอบนำเข้า</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              ตรวจสถานะงานล่าสุด, error message, และจำนวนแถวที่ประมวลผลได้โดยไม่ต้องเปิด console
+              ตรวจสถานะงานล่าสุด รายละเอียดข้อผิดพลาด และจำนวนแถวที่ประมวลผลได้จากหน้านี้
             </p>
           </div>
           <button
@@ -854,17 +869,18 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
           </div>
         ) : (
           <div className="mt-5 overflow-hidden rounded-2xl border border-border">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="ตารางประวัติรอบนำเข้า เลื่อนในแนวนอนได้">
               <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+                <caption className="sr-only">ประวัติรอบนำเข้า 8 รอบล่าสุด</caption>
                 <thead className="bg-surface text-xs font-semibold text-muted">
                   <tr>
-                    <th className="px-4 py-3">เวลา</th>
-                    <th className="px-4 py-3">ไฟล์</th>
-                    <th className="px-4 py-3">สถานะ</th>
-                    <th className="px-4 py-3 text-right">แถว</th>
-                    <th className="px-4 py-3 text-right">ใหม่</th>
-                    <th className="px-4 py-3 text-right">เปลี่ยน</th>
-                    <th className="px-4 py-3">หมายเหตุ</th>
+                    <th scope="col" className="px-4 py-3">เวลา</th>
+                    <th scope="col" className="px-4 py-3">ไฟล์</th>
+                    <th scope="col" className="px-4 py-3">สถานะ</th>
+                    <th scope="col" className="px-4 py-3 text-right">แถว</th>
+                    <th scope="col" className="px-4 py-3 text-right">ใหม่</th>
+                    <th scope="col" className="px-4 py-3 text-right">เปลี่ยน</th>
+                    <th scope="col" className="px-4 py-3">หมายเหตุ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">

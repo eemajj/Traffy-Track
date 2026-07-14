@@ -4,7 +4,7 @@ import { hasSupabaseAdminEnv } from "@/lib/env";
 import { getSafeHttpsUrl } from "@/lib/safe-url";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { getCachedTicketFilterOptions } from "@/lib/ticket-filter-options";
-import { CLOSED_TICKET_STATES, buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
+import { CLOSED_TICKET_STATES, buildPendingStatesOrFilter, isClosedTicketState } from "@/lib/tickets";
 
 const DEFAULT_CASES_PAGE_SIZE = 50;
 const ALLOWED_CASES_PAGE_SIZES = [10, 50, 100] as const;
@@ -185,7 +185,15 @@ function doesTicketMatchListFilters(ticket: CaseListItem, filters: { q: string; 
   return true;
 }
 
-function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; contains: Function; not: Function; or: Function }>(
+interface TicketFilterQuery {
+  ilike(column: string, pattern: string): this;
+  eq(column: string, value: unknown): this;
+  contains(column: string, value: unknown): this;
+  not(column: string, operator: string, value: unknown): this;
+  or(filters: string): this;
+}
+
+function addTicketFilters<QueryBuilder extends TicketFilterQuery>(
   query: QueryBuilder,
   filters: {
     q: string;
@@ -199,7 +207,7 @@ function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; 
   let nextQuery = query;
 
   if (filters.view === "pending" || filters.view === "reopened" || filters.view === "status-changed") {
-    nextQuery = nextQuery.not(`${prefix}state`, "in", buildClosedStatesFilter());
+    nextQuery = nextQuery.or(buildPendingStatesOrFilter(prefix));
   }
 
   if (filters.view === "closed") {
@@ -209,7 +217,7 @@ function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; 
   }
 
   if (filters.view === "unassigned") {
-    nextQuery = nextQuery.not(`${prefix}state`, "in", buildClosedStatesFilter()).or(
+    nextQuery = nextQuery.or(buildPendingStatesOrFilter(prefix)).or(
       `${prefix}dept_list.is.null,${prefix}dept_list.eq.{}`
     );
   }

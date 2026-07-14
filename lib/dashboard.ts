@@ -2,7 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
-import { buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
+import { buildPendingStatesOrFilter, isClosedTicketState } from "@/lib/tickets";
 
 type LatestImportBatch = {
   id: string;
@@ -107,7 +107,17 @@ function getChangeLabel(field: string) {
     state: "สถานะ",
     org_response: "หน่วยงาน",
     star: "คะแนนดาว",
-    last_activity: "อัปเดตล่าสุด"
+    last_activity: "อัปเดตล่าสุด",
+    timestamp: "วันที่รับเรื่อง",
+    type: "ประเภท",
+    comment: "รายละเอียด",
+    photo_url: "รูปภาพ",
+    address: "ที่อยู่",
+    subdistrict: "แขวง",
+    district: "เขต",
+    province: "จังหวัด",
+    hashtag: "แฮชแท็ก",
+    coords: "พิกัด"
   };
 
   return labels[field] || field;
@@ -168,7 +178,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     noStore();
 
     const supabase = createSupabaseAdminClient();
-    const closedFilter = buildClosedStatesFilter();
+    const pendingFilter = buildPendingStatesOrFilter();
 
     const latestBatchResult = await supabase
       .from("import_batches")
@@ -196,17 +206,17 @@ export async function getDashboardData(): Promise<DashboardData> {
       supabase
         .from("tickets")
         .select("ticket_id", { count: "exact", head: true })
-        .not("state", "in", closedFilter),
+        .or(pendingFilter),
       supabase
         .from("tickets")
         .select("ticket_id", { count: "exact", head: true })
-        .not("state", "in", closedFilter)
+        .or(pendingFilter)
         .or("dept_list.is.null,dept_list.eq.{}"),
       supabase.rpc("dashboard_pending_by_department"),
       supabase
         .from("tickets")
         .select("ticket_id, state, comment, address, last_activity, org_response, dept_list")
-        .not("state", "in", closedFilter)
+        .or(pendingFilter)
         .or("dept_list.is.null,dept_list.eq.{}")
         .order("last_activity", { ascending: false, nullsFirst: false })
         .limit(12),
@@ -216,7 +226,7 @@ export async function getDashboardData(): Promise<DashboardData> {
             .select("id, tickets!inner(state)", { count: "exact", head: true })
             .eq("import_batch_id", latestBatch.id)
             .neq("changed_field", "last_activity")
-            .not("tickets.state", "in", closedFilter)
+            .or(pendingFilter, { referencedTable: "tickets" })
         : Promise.resolve({ data: [], error: null, count: 0 }),
       latestBatch
         ? supabase
@@ -224,7 +234,7 @@ export async function getDashboardData(): Promise<DashboardData> {
             .select("id, tickets!inner(state)", { count: "exact", head: true })
             .eq("import_batch_id", latestBatch.id)
             .eq("changed_field", "reopened")
-            .not("tickets.state", "in", closedFilter)
+            .or(pendingFilter, { referencedTable: "tickets" })
         : Promise.resolve({ data: [], error: null, count: 0 }),
       latestBatch
         ? supabase
@@ -234,7 +244,7 @@ export async function getDashboardData(): Promise<DashboardData> {
             )
             .eq("import_batch_id", latestBatch.id)
             .neq("changed_field", "last_activity")
-            .not("tickets.state", "in", closedFilter)
+            .or(pendingFilter, { referencedTable: "tickets" })
             .order("detected_at", { ascending: false })
             .limit(120)
         : Promise.resolve({ data: [], error: null })

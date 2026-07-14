@@ -29,7 +29,8 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
 
   const sessionCookieValue = await createSessionCookieValue(role);
 
-  cookies().set(env.authCookieName, sessionCookieValue, {
+  const cookieStore = await cookies();
+  cookieStore.set(env.authCookieName, sessionCookieValue, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -41,7 +42,8 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
 }
 
 export async function logoutAction() {
-  cookies().set(env.authCookieName, "", {
+  const cookieStore = await cookies();
+  cookieStore.set(env.authCookieName, "", {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

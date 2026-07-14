@@ -7,7 +7,7 @@ const authCookieName = process.env.APP_AUTH_COOKIE || "citydata-passcode";
 
 const protectedPrefixes = ["/import", "/dashboard", "/analytics", "/cases", "/map", "/report", "/admin"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const isProtected = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 

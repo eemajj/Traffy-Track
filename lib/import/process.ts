@@ -9,11 +9,17 @@ import {
   TicketRecord
 } from "@/lib/import/types";
 import { normalizeCsvRow, normalizeTicket, validateCsvColumns } from "@/lib/import/normalize";
+import {
+  getTicketFieldChanges,
+  preserveMissingOptionalFields,
+  validateCsvRows
+} from "@/lib/import/integrity";
 import { dedupeTicketsById } from "@/lib/import/dedupe";
 import { IMPORT_BUCKET } from "@/lib/storage";
 import { isClosedTicketState } from "@/lib/tickets";
 
 const SELECT_CHUNK_SIZE = 500;
+const IMPORT_HEARTBEAT_ROW_INTERVAL = 5_000;
 
 type ImportBatchRow = {
   id: string;
@@ -50,25 +56,6 @@ function stringifyValue(value: string | number | null) {
   return String(value);
 }
 
-function areTimestampValuesEqual(left: string | null, right: string | null) {
-  if (!left && !right) {
-    return true;
-  }
-
-  if (!left || !right) {
-    return false;
-  }
-
-  const leftTime = new Date(left).getTime();
-  const rightTime = new Date(right).getTime();
-
-  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) {
-    return left === right;
-  }
-
-  return leftTime === rightTime;
-}
-
 function mapImportBatchRow(row: ImportBatchRow): ImportJob {
   return {
     filename: row.filename || "import.csv",
@@ -86,6 +73,21 @@ function mapImportBatchRow(row: ImportBatchRow): ImportJob {
     importedAt: row.imported_at,
     completedAt: row.completed_at
   };
+}
+
+async function heartbeatImportBatch(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  importBatchId: string
+) {
+  const result = await supabase.rpc("heartbeat_import_batch", {
+    p_import_batch_id: importBatchId
+  });
+
+  if (result.error || result.data !== true) {
+    throw new Error(
+      `งานนำเข้าสูญเสีย heartbeat หรือถูกปิดแล้ว: ${result.error?.message || "สถานะงานไม่ใช่ running"}`
+    );
+  }
 }
 
 export async function createQueuedImportBatch(input: {
@@ -112,6 +114,10 @@ export async function createQueuedImportBatch(input: {
       "id, filename, total_rows, processed_rows, duplicate_rows, new_tickets, reopened_tickets, changed_tickets, unchanged_tickets, changed_fields, status, error_message, imported_at, completed_at"
     )
     .single();
+
+  if (error?.code === "23505") {
+    throw new Error("มีงานนำเข้าที่กำลังรอหรือกำลังประมวลผลอยู่ กรุณารอให้งานเดิมเสร็จก่อน");
+  }
 
   if (error || !data) {
     throw new Error(`สร้างรอบนำเข้าไม่สำเร็จ: ${error?.message || "ไม่ทราบสาเหตุ"}`);
@@ -157,14 +163,34 @@ export async function getRecentImportJobs(limit = 8): Promise<ImportJob[]> {
 async function markImportBatchFailed(importBatchId: string, error: unknown) {
   const supabase = createSupabaseAdminClient();
 
-  await supabase
+  const result = await supabase
     .from("import_batches")
     .update({
       status: "failed",
       error_message: error instanceof Error ? error.message : "นำเข้าข้อมูลไม่สำเร็จโดยไม่ทราบสาเหตุ",
       completed_at: new Date().toISOString()
     })
-    .eq("id", importBatchId);
+    .eq("id", importBatchId)
+    .in("status", ["queued", "running"])
+    .select("id")
+    .maybeSingle();
+
+  if (result.error) {
+    throw new Error(`ยืนยันสถานะงานนำเข้าที่ล้มเหลวไม่สำเร็จ: ${result.error.message}`);
+  }
+  if (!result.data) {
+    const statusResult = await supabase
+      .from("import_batches")
+      .select("status")
+      .eq("id", importBatchId)
+      .maybeSingle();
+    if (
+      statusResult.error
+      || (statusResult.data?.status !== "completed" && statusResult.data?.status !== "failed")
+    ) {
+      throw new Error(`ยืนยันสถานะงานนำเข้าที่ล้มเหลวไม่สำเร็จ: ${statusResult.error?.message || "ไม่พบงาน"}`);
+    }
+  }
 }
 
 export async function processImportCsv(file: File): Promise<ImportSummary> {
@@ -198,7 +224,21 @@ export async function processImportCsvFromStorage(input: {
 
     throw error;
   } finally {
-    await supabase.storage.from(IMPORT_BUCKET).remove([input.path]);
+    // Keep the source whenever the database cannot prove the job reached a
+    // terminal state. This leaves stale recovery/retry with the original CSV.
+    if (input.importBatchId) {
+      const statusResult = await supabase
+        .from("import_batches")
+        .select("status")
+        .eq("id", input.importBatchId)
+        .maybeSingle();
+      if (
+        !statusResult.error
+        && (statusResult.data?.status === "completed" || statusResult.data?.status === "failed")
+      ) {
+        await supabase.storage.from(IMPORT_BUCKET).remove([input.path]);
+      }
+    }
   }
 }
 
@@ -214,17 +254,24 @@ export async function processImportCsvText(
 
   try {
     if (importBatchId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("import_batches")
         .update({
           status: "running",
           error_message: null,
-          completed_at: null
+          completed_at: null,
+          heartbeat_at: new Date().toISOString()
         })
-        .eq("id", importBatchId);
+        .eq("id", importBatchId)
+        .eq("status", "queued")
+        .select("id")
+        .maybeSingle();
 
       if (error) {
         throw new Error(`อัปเดตสถานะรอบนำเข้าไม่สำเร็จ: ${error.message}`);
+      }
+      if (!data) {
+        throw new Error("งานนำเข้านี้ไม่อยู่ในสถานะรอประมวลผลแล้ว");
       }
     } else {
       const queuedBatch = await createQueuedImportBatch({ filename });
@@ -232,7 +279,8 @@ export async function processImportCsvText(
       const { error } = await supabase
         .from("import_batches")
         .update({
-          status: "running"
+          status: "running",
+          heartbeat_at: new Date().toISOString()
         })
         .eq("id", importBatchId);
 
@@ -246,33 +294,22 @@ export async function processImportCsvText(
       skipEmptyLines: "greedy"
     });
 
-    const blockingParseErrors = parsed.errors.filter((error) => {
-      const errorType = (error as { type?: string }).type;
-      return errorType !== "FieldMismatch";
-    });
-
-    if (blockingParseErrors.length > 0) {
-      const firstError = blockingParseErrors[0];
-      throw new Error(`CSV parse error at row ${firstError.row}: ${firstError.message}`);
-    }
-
     if (parsed.errors.length > 0) {
-      console.warn("CSV import continued with row-level field mismatches", {
-        filename,
-        mismatchCount: parsed.errors.length,
-        firstMismatch: parsed.errors[0]
-      });
+      const firstError = parsed.errors[0];
+      throw new Error(`CSV parse error at row ${firstError.row}: ${firstError.message}`);
     }
 
     const columnMap = validateCsvColumns(parsed.meta.fields || []);
 
-    const normalizedRows = parsed.data
-      .map((row: Record<string, string>) => normalizeCsvRow(row, columnMap))
-      .filter((row) => row.ticket_id.trim().length > 0);
+    const normalizedRows = parsed.data.map((row: Record<string, string>) => normalizeCsvRow(row, columnMap));
 
     if (normalizedRows.length === 0) {
       throw new Error("CSV does not contain any valid rows");
     }
+
+    validateCsvRows(normalizedRows);
+
+    await heartbeatImportBatch(supabase, importBatchId);
 
     const normalizedTicketRecords = normalizedRows.map((row) => normalizeTicket(row));
     const {
@@ -286,7 +323,9 @@ export async function processImportCsvText(
     for (const ticketIdChunk of chunkArray(uniqueTicketIds, SELECT_CHUNK_SIZE)) {
       const { data, error } = await supabase
         .from("tickets")
-        .select("ticket_id, state, org_response, last_activity, star")
+        .select(
+          "ticket_id, type, comment, photo_url, address, subdistrict, district, province, timestamp, last_activity, state, org_response, org_list, dept_list, star, hashtag, lat, lng"
+        )
         .in("ticket_id", ticketIdChunk);
 
       if (error) {
@@ -296,6 +335,8 @@ export async function processImportCsvText(
       for (const row of (data || []) as ExistingTicketSnapshot[]) {
         existingTicketMap.set(row.ticket_id, row);
       }
+
+      await heartbeatImportBatch(supabase, importBatchId);
     }
 
     let newTickets = 0;
@@ -307,7 +348,13 @@ export async function processImportCsvText(
     const upsertRows: TicketRecord[] = [];
     const historyRows: TicketHistoryInsert[] = [];
 
-    for (const ticket of ticketRecords) {
+    for (let ticketIndex = 0; ticketIndex < ticketRecords.length; ticketIndex += 1) {
+      const sourceTicket = ticketRecords[ticketIndex];
+      if (ticketIndex > 0 && ticketIndex % IMPORT_HEARTBEAT_ROW_INTERVAL === 0) {
+        await heartbeatImportBatch(supabase, importBatchId);
+      }
+
+      let ticket = sourceTicket;
       const existing = existingTicketMap.get(ticket.ticket_id);
 
       if (!existing) {
@@ -323,45 +370,10 @@ export async function processImportCsvText(
         continue;
       }
 
-      const fieldChanges: Array<{
-        changed_field: "state" | "org_response" | "last_activity" | "star";
-        old_value: string | null;
-        new_value: string | null;
-      }> = [];
-
-      if ((existing.state || null) !== ticket.state) {
-        fieldChanges.push({
-          changed_field: "state",
-          old_value: stringifyValue(existing.state),
-          new_value: stringifyValue(ticket.state)
-        });
-      }
+      ticket = preserveMissingOptionalFields(ticket, existing, columnMap);
+      const fieldChanges = getTicketFieldChanges(existing, ticket);
 
       const isReopenedTicket = isClosedTicketState(existing.state || null) && Boolean(ticket.state) && !isClosedTicketState(ticket.state);
-
-      if ((existing.org_response || null) !== ticket.org_response) {
-        fieldChanges.push({
-          changed_field: "org_response",
-          old_value: stringifyValue(existing.org_response),
-          new_value: stringifyValue(ticket.org_response)
-        });
-      }
-
-      if (!areTimestampValuesEqual(existing.last_activity || null, ticket.last_activity)) {
-        fieldChanges.push({
-          changed_field: "last_activity",
-          old_value: stringifyValue(existing.last_activity),
-          new_value: stringifyValue(ticket.last_activity)
-        });
-      }
-
-      if ((existing.star ?? null) !== ticket.star) {
-        fieldChanges.push({
-          changed_field: "star",
-          old_value: stringifyValue(existing.star),
-          new_value: stringifyValue(ticket.star)
-        });
-      }
 
       if (fieldChanges.length === 0) {
         unchangedTickets += 1;
@@ -393,7 +405,10 @@ export async function processImportCsvText(
           import_batch_id: importBatchId
         });
       }
+
     }
+
+    await heartbeatImportBatch(supabase, importBatchId);
 
     const { error: applyError } = await supabase.rpc("apply_import_batch", {
       p_import_batch_id: importBatchId,

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { readFile } from "node:fs/promises";
+
 import { isCronAuthorizationValid } from "../lib/cron-auth.ts";
 import {
   GENERATED_EXPORT_RETENTION_MS,
@@ -55,4 +57,78 @@ test("temporary bucket limits stay within the Supabase Free Tier ceiling", () =>
   assert.equal(STORAGE_FREE_TIER_MAX_BYTES, 50 * 1024 * 1024);
   assert.ok(IMPORT_MAX_BYTES <= STORAGE_FREE_TIER_MAX_BYTES);
   assert.ok(REPORT_EXPORT_MAX_BYTES <= STORAGE_FREE_TIER_MAX_BYTES);
+});
+
+test("system wipe deletes database rows before delegating evidence deletion to the outbox", async () => {
+  const adminSource = await readFile(new URL("../lib/admin.ts", import.meta.url), "utf8");
+  const wipeSource = adminSource.slice(adminSource.indexOf("export async function wipeSystemData"));
+  const databaseDeleteIndex = wipeSource.indexOf('await deleteAllRows("report_batches", "id")');
+  const outboxIndex = wipeSource.indexOf('.from("storage_deletion_outbox")');
+
+  assert.ok(databaseDeleteIndex >= 0, "wipe no longer deletes report rows");
+  assert.ok(outboxIndex > databaseDeleteIndex, "outbox status was read before the database delete committed");
+  assert.doesNotMatch(wipeSource, /removeStoragePrefix\(REPORT_EVIDENCE_BUCKET/);
+});
+
+test("restore delegates immutable evidence writes to the restricted restore RPC", async () => {
+  const restoreSource = await readFile(new URL("../scripts/restore-backup.mjs", import.meta.url), "utf8");
+  const deleteOrder = restoreSource.slice(
+    restoreSource.indexOf("const DELETE_ORDER"),
+    restoreSource.indexOf("const INSERT_ORDER")
+  );
+  const insertOrder = restoreSource.slice(
+    restoreSource.indexOf("const INSERT_ORDER"),
+    restoreSource.indexOf("const PRIMARY_KEYS")
+  );
+
+  assert.doesNotMatch(deleteOrder, /report_evidence_(versions|status_events)/);
+  assert.doesNotMatch(insertOrder, /report_evidence_(versions|status_events)/);
+  assert.match(restoreSource, /rpc\("restore_report_evidence_snapshot"/);
+  assert.match(restoreSource, /p_events: rowsByTable\.report_evidence_status_events\s*\n/);
+  assert.doesNotMatch(restoreSource, /p_events:[\s\S]{0,120}\.map\(/);
+});
+
+test("maintenance isolates stages so temporary cleanup still runs after an outbox failure", async () => {
+  const routeSource = await readFile(
+    new URL("../app/api/cron/maintenance/route.ts", import.meta.url),
+    "utf8"
+  );
+  const outboxStage = routeSource.indexOf('runMaintenanceStage("storage-deletion-outbox"');
+  const cleanupStage = routeSource.indexOf('runMaintenanceStage("temporary-storage-cleanup"');
+
+  assert.match(routeSource, /async function runMaintenanceStage/);
+  assert.ok(outboxStage >= 0, "outbox maintenance stage is missing");
+  assert.ok(cleanupStage > outboxStage, "temporary cleanup is not run after the isolated outbox stage");
+});
+
+test("stored import sources are only removed after a terminal database status is confirmed", async () => {
+  const importSource = await readFile(new URL("../lib/import/process.ts", import.meta.url), "utf8");
+  const storageImport = importSource.slice(
+    importSource.indexOf("export async function processImportCsvFromStorage"),
+    importSource.indexOf("export async function processImportCsvText")
+  );
+  const statusRead = storageImport.indexOf('.select("status")');
+  const remove = storageImport.indexOf(".remove([input.path])");
+
+  assert.ok(statusRead >= 0, "import source cleanup does not read the durable job status");
+  assert.ok(remove > statusRead, "import source is removed before terminal status verification");
+  assert.match(storageImport, /status === "completed" \|\| statusResult\.data\?\.status === "failed"/);
+});
+
+test("import processing refreshes heartbeat at bounded processing checkpoints", async () => {
+  const importSource = await readFile(new URL("../lib/import/process.ts", import.meta.url), "utf8");
+  const processSource = importSource.slice(
+    importSource.indexOf("export async function processImportCsvText")
+  );
+  const heartbeatCalls = processSource.match(/await heartbeatImportBatch\(supabase, importBatchId\)/g) || [];
+
+  assert.match(importSource, /rpc\("heartbeat_import_batch"/);
+  assert.match(importSource, /result\.data !== true/);
+  assert.match(processSource, /ticketIndex % IMPORT_HEARTBEAT_ROW_INTERVAL === 0/);
+  assert.ok(heartbeatCalls.length >= 3, "long-running import phases do not refresh heartbeat");
+  assert.ok(
+    processSource.indexOf("await heartbeatImportBatch(supabase, importBatchId)")
+      < processSource.indexOf('supabase.rpc("apply_import_batch"'),
+    "import is applied without a final lease check"
+  );
 });

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { createClient } from "@supabase/supabase-js";
@@ -12,6 +13,8 @@ const TABLES = [
   "report_batches",
   "report_batch_departments",
   "report_batch_items",
+  "report_evidence_versions",
+  "report_evidence_status_events",
   "report_archives"
 ];
 const DELETE_ORDER = [
@@ -39,6 +42,8 @@ const PRIMARY_KEYS = {
   report_batches: "id",
   report_batch_departments: "id",
   report_batch_items: "id",
+  report_evidence_versions: "id",
+  report_evidence_status_events: "id",
   report_archives: "id"
 };
 
@@ -113,8 +118,11 @@ async function deleteRows(supabase, table) {
 }
 
 function prepareRows(table, rows) {
-  if (table === "ticket_history" || table === "report_batch_items") {
+  if (table === "ticket_history" || table === "report_batch_items" || table === "report_evidence_status_events") {
     return rows.map(({ id: _id, ...row }) => row);
+  }
+  if (table === "report_batch_departments") {
+    return rows.map(({ current_evidence_version_id: _currentEvidenceVersionId, ...row }) => row);
   }
   return rows;
 }
@@ -126,6 +134,28 @@ async function insertRows(supabase, table, rows) {
     if (result.error) {
       throw new Error(`Could not restore ${table} at row ${offset}: ${result.error.message}`);
     }
+  }
+}
+
+async function restoreImmutableEvidence(supabase, rowsByTable) {
+  const result = await supabase.rpc("restore_report_evidence_snapshot", {
+    p_versions: rowsByTable.report_evidence_versions,
+    p_events: rowsByTable.report_evidence_status_events
+  });
+
+  if (result.error) {
+    throw new Error(`Could not restore immutable evidence history: ${result.error.message}`);
+  }
+
+  const restoredVersions = Number(result.data?.versions ?? -1);
+  const restoredEvents = Number(result.data?.events ?? -1);
+  if (
+    restoredVersions !== rowsByTable.report_evidence_versions.length
+    || restoredEvents !== rowsByTable.report_evidence_status_events.length
+  ) {
+    throw new Error(
+      `Evidence restore count mismatch: expected ${rowsByTable.report_evidence_versions.length}/${rowsByTable.report_evidence_status_events.length}, got ${restoredVersions}/${restoredEvents}`
+    );
   }
 }
 
@@ -186,6 +216,25 @@ async function restoreStorage(supabase, backupDirectory, manifest) {
   }
 }
 
+async function verifyStorage(supabase, backupDirectory, manifest) {
+  for (const object of manifest.storage ?? []) {
+    const [expected, downloaded] = await Promise.all([
+      readFile(path.join(backupDirectory, "storage", object.bucket, object.path)),
+      supabase.storage.from(object.bucket).download(object.path)
+    ]);
+    if (downloaded.error || !downloaded.data) {
+      throw new Error(`Could not verify restored storage ${object.bucket}/${object.path}`);
+    }
+
+    const actual = Buffer.from(await downloaded.data.arrayBuffer());
+    const expectedHash = createHash("sha256").update(expected).digest("hex");
+    const actualHash = createHash("sha256").update(actual).digest("hex");
+    if (expected.length !== actual.length || expectedHash !== actualHash) {
+      throw new Error(`Storage verification failed for ${object.bucket}/${object.path}`);
+    }
+  }
+}
+
 const options = parseArguments(process.argv.slice(2));
 const supabaseUrl = process.env.SUPABASE_URL;
 let serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -237,7 +286,19 @@ for (const table of DELETE_ORDER) {
 for (const table of INSERT_ORDER) {
   await insertRows(supabase, table, rowsByTable[table]);
 }
+await restoreImmutableEvidence(supabase, rowsByTable);
+for (const department of rowsByTable.report_batch_departments) {
+  if (!department.current_evidence_version_id) continue;
+  const result = await supabase
+    .from("report_batch_departments")
+    .update({ current_evidence_version_id: department.current_evidence_version_id })
+    .eq("id", department.id);
+  if (result.error) {
+    throw new Error(`Could not restore evidence pointer for department ${department.id}: ${result.error.message}`);
+  }
+}
 await restoreStorage(supabase, backupDirectory, manifest);
+await verifyStorage(supabase, backupDirectory, manifest);
 
 const afterCounts = Object.fromEntries(
   await Promise.all(TABLES.map(async (table) => [table, await countRows(supabase, table)]))

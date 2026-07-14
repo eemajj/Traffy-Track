@@ -27,7 +27,7 @@ async function runImportJob(input: {
     revalidatePath("/dashboard");
     revalidatePath("/report");
     revalidatePath("/cases");
-    revalidateTag(TICKET_FILTER_OPTIONS_TAG);
+    revalidateTag(TICKET_FILTER_OPTIONS_TAG, { expire: 0 });
   } catch (error) {
     await recordAuditEvent({
       action: "import.failed",
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     revalidatePath("/dashboard");
     revalidatePath("/report");
     revalidatePath("/cases");
-    revalidateTag(TICKET_FILTER_OPTIONS_TAG);
+    revalidateTag(TICKET_FILTER_OPTIONS_TAG, { expire: 0 });
 
     return NextResponse.json(summary, {
       headers: {

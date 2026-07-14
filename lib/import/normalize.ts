@@ -1,8 +1,6 @@
-import { CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
+import { CsvColumnMap, CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
 import { parseCoordinates } from "@/lib/coordinates";
 import { getSafeHttpsUrl } from "@/lib/safe-url";
-
-type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
 
 const optionalCsvColumns = new Set<RequiredCsvColumn>([
   "photo",

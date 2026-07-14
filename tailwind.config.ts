@@ -19,7 +19,7 @@ const config: Config = {
         border: "#c6d9cf",
         muted: "#526b61",
         success: "#2f7d4e",
-        warning: "#c98322",
+        warning: "#94550b",
         danger: "#b13a3a"
       },
       fontFamily: {
