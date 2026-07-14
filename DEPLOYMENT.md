@@ -65,3 +65,22 @@ It runs:
 - Code rollback: redeploy the last known-good Vercel deployment.
 - Database rollback: use explicit SQL rollback only when tested. Otherwise restore from backup/export.
 - Storage rollback: restore from downloaded backup ZIP when available.
+
+## Backup Restore Drill (Staging Only)
+
+The admin backup is a ZIP containing `manifest.json`, JSON table exports, and private storage objects. Extract it before running the restore tool:
+
+```bash
+unzip system-backup-<timestamp>.zip -d /tmp/traffy-restore
+set -a
+source .env.staging
+set +a
+RESTORE_CONFIRM_PROJECT_REF=<staging-project-ref> \
+  node scripts/restore-backup.mjs --backup-dir /tmp/traffy-restore
+RESTORE_CONFIRM_PROJECT_REF=<staging-project-ref> \
+  node scripts/restore-backup.mjs --backup-dir /tmp/traffy-restore --apply
+```
+
+The first command is a dry run and reports current and backup row counts. The `--apply` command clears the application tables and `report-evidence` bucket in the target project before restoring and verifying row counts. The script refuses to run against the production project ref.
+
+Run this only with staging credentials. After restoration, smoke-test `/admin`, `/dashboard`, `/cases`, `/report`, and one evidence download when the backup contains evidence files.

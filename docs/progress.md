@@ -16,10 +16,14 @@
 - เพิ่ม skeleton loading สำหรับหน้าหลัก และ progress bar ในหน้า import แล้ว
 - ปรับ import ให้รองรับ `ticket_id` ซ้ำใน CSV เดียวกันแบบ deterministic แล้ว พร้อมสรุปแถวซ้ำ/จำนวนเรื่องที่ประมวลผลจริง/จำนวน field ที่เปลี่ยน
 - Server ล่าสุดเปิดไว้ที่ `http://127.0.0.1:3000` ถ้าพรุ่งนี้เข้าไม่ได้ให้ restart ใหม่
-- Critical remediation จาก audit 2026-07-11 ถูก apply บน Supabase project `Traffy Follow` แล้ว: anon access ถูกปิดและ import ใช้ transaction RPC; งาน production readiness ที่เหลือคือ backup/restore drill และ reliability ระยะถัดไป
+- Critical remediation จาก audit 2026-07-11 ถูก apply บน Supabase project `Traffy Follow` แล้ว: anon access ถูกปิด, import ใช้ transaction RPC และ restore drill บน Staging ผ่านแล้ว
 - แผน remediation เร่งด่วน: RLS/revoke, auth fail-closed + logout, แก้ open redirect/duplicate/date/URL validation, แล้วจึงทำ import transaction และ backup/restore
 
 ## Done
+- เปิด Draft PR #1 จาก `feature/v2-analytics` เข้า `main` เพื่อปิดรอบ V2 และทำให้ default branch ตรงกับเวอร์ชันที่ deploy แล้ว
+- เพิ่ม `scripts/restore-backup.mjs` พร้อม dry-run, target confirmation, production refusal, foreign-key ordering, storage restore และ row-count verification
+- Restore Drill วันที่ 2026-07-14 ผ่านบน Supabase `Traffy Follow Staging`: restore 13,998 tickets, 28,042 history rows และ 6 import batches จาก backup วันที่ 2026-07-07 โดย Production ไม่ถูกแตะ
+- แก้ Vercel Preview Supabase variables ที่มีค่าเป็นค่าว่างให้ชี้ `Traffy Follow Staging` อีกครั้ง
 - เพิ่มหน้า `/analytics`, RPC `analytics_overview`, loading state, navigation/auth guard และคำอธิบายฐานตัวอย่างเวลาปิดเรื่อง
 - เพิ่ม migration `20260712220000_report_item_snapshots.sql` และปรับ create/detail/export/archive ให้ใช้ snapshot + pagination
 - เพิ่ม `/api/cron/maintenance` ป้องกันด้วย `CRON_SECRET`; keepalive ทุกวันและ cleanup import เกิน 14 วัน/export เกิน 7 วันโดยไม่แตะ evidence
@@ -154,7 +158,6 @@
 - ตัด V2.2 เดิม (SLA) และ V2.3 เดิม (แจ้งเตือน) ออกจากแผนพัฒนาปัจจุบัน
 - แก้ V2.1 map: พบว่าพิกัดในฐานข้อมูลเป็น `null` ทั้งหมด เพราะ CSV CityData ส่ง `coords` เป็น longitude,latitude; แก้ parser, เพิ่ม regression test และ backfill เฉพาะพิกัดที่ว่างสำเร็จ 13,974 เคส
 - เริ่ม V2.2 data quality: import preview ตรวจพิกัดว่าง/ผิด, สถานะว่าง, หน่วยงานว่าง และเทียบตัวอย่างกับ tickets เดิมเพื่อสรุป new/existing/changed ก่อนยืนยัน
-- งาน reliability ระยะถัดไป: durable queue, report immutable snapshot, paginated export และ restore drill
 - ยังไม่ได้ทดสอบ import ซ้ำด้วยไฟล์ล่าสุด `citydata เขตทวีวัฒนา 2026-07-06 23-12-38.csv` เพราะไฟล์นี้ไม่อยู่ใน workspace
 - ถ้ามี feedback จากผู้ใช้ปลายทาง ควรตรวจรูปแบบ cell/print layout ของ Excel จาก `formTF.xlsx` เพิ่ม
 
@@ -169,7 +172,7 @@
 - ทำต่อบน branch `feature/traffy-track-v2`
 - V2.1 แผนที่และ V2.2 Data Quality ถูกตรวจและ push แล้วที่ commit `7b208a5`
 - V2.3 role/permission + audit log ถูก commit/push ที่ `fd34fd2`; migrations และ smoke test บน project `Traffy Follow` ผ่านแล้ว
-- V2.4 และ hardening ที่ระบุด้านบนทำบน branch `feature/v2-analytics`; ขั้นถัดไปคือ visual QA จาก local, ตั้ง `CRON_SECRET`, review diff และ deploy ผ่าน staging
+- V2.4, hardening และ Civic Emerald UI อยู่บน branch `feature/v2-analytics` และ deploy Production แล้ว; ขั้นถัดไปคือ review/merge Draft PR #1 เข้า `main`
 
 ## Pause Checkpoint — 2026-07-12
 - กลับมาดำเนินงานต่อและตรวจ V2.3 ครบแล้ว
