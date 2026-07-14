@@ -90,20 +90,23 @@ export function AdminBackupPanel() {
           type="button"
           onClick={createBackup}
           disabled={isExporting}
-          className="rounded-2xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isExporting ? "กำลังสร้าง backup..." : "สร้าง Backup ZIP"}
         </button>
       </div>
 
       {errorMessage ? (
-        <p className="mt-4 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm leading-6 text-danger">
+        <p
+          role="alert"
+          className="mt-4 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm leading-6 text-danger"
+        >
           {errorMessage}
         </p>
       ) : null}
 
       {backupResult ? (
-        <div className="mt-5 rounded-2xl border border-success/20 bg-success/10 p-4">
+        <div role="status" className="mt-5 rounded-2xl border border-success/20 bg-success/10 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-sm font-semibold text-success">ดาวน์โหลด backup สำเร็จ</p>
@@ -120,14 +123,22 @@ export function AdminBackupPanel() {
   );
 }
 
-export function AdminWipePanel() {
+export function AdminWipePanel({
+  isProduction,
+  environmentName
+}: {
+  isProduction: boolean;
+  environmentName: string;
+}) {
   const [mode, setMode] = useState<WipeMode>("reports");
   const [confirmation, setConfirmation] = useState("");
   const [isWiping, setIsWiping] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const requiredConfirmation = mode === "all" ? "WIPE ALL DATA" : "WIPE REPORT DATA";
+  const requiredConfirmation = `${mode === "all" ? "WIPE ALL DATA" : "WIPE REPORT DATA"}${
+    isProduction ? " PRODUCTION" : ""
+  }`;
 
   async function wipeData() {
     setIsWiping(true);
@@ -170,43 +181,70 @@ export function AdminWipePanel() {
         ใช้หลังจาก backup สำเร็จแล้วเท่านั้น โหมดล้างรายงานจะลบ report batches, รายการฝ่าย, รายการเคสในรายงาน และไฟล์หลักฐาน
         ส่วนโหมดล้างทั้งหมดจะล้าง ticket/import/report data และไฟล์ชั่วคราว โดยไม่ลบ backup ZIP ใน export bucket
       </p>
+      <p id="wipe-warning" className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-danger">
+        การล้างข้อมูลไม่สามารถย้อนกลับได้ โปรดตรวจสอบไฟล์ Backup ZIP ก่อนดำเนินการ
+      </p>
+      <p className="mt-3 max-w-3xl rounded-2xl border border-danger/20 bg-white px-4 py-3 text-sm leading-6 text-danger">
+        Environment: <span className="font-semibold">{environmentName}</span>
+        {isProduction ? " · ต้องพิมพ์คำว่า PRODUCTION ต่อท้ายคำยืนยันก่อนล้างข้อมูลจริง" : " · ใช้สำหรับทดสอบ flow ก่อนขึ้น production"}
+      </p>
 
-      <div className="mt-5 grid gap-3 lg:grid-cols-[240px_1fr_auto]">
-        <select
-          value={mode}
-          onChange={(event) => {
-            setMode(event.target.value === "all" ? "all" : "reports");
-            setConfirmation("");
-          }}
-          className="min-h-12 rounded-2xl border border-danger/25 bg-white px-4 text-sm font-semibold text-ink outline-none focus:border-danger focus:ring-4 focus:ring-danger/10"
-        >
-          <option value="reports">ล้างเฉพาะข้อมูลรายงาน</option>
-          <option value="all">ล้างข้อมูลระบบทั้งหมด</option>
-        </select>
-        <input
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-          placeholder={`พิมพ์ ${requiredConfirmation}`}
-          className="min-h-12 rounded-2xl border border-danger/25 bg-white px-4 text-sm text-ink outline-none focus:border-danger focus:ring-4 focus:ring-danger/10"
-        />
-        <button
-          type="button"
-          onClick={wipeData}
-          disabled={isWiping || confirmation !== requiredConfirmation}
-          className="rounded-2xl bg-danger px-5 py-3 text-sm font-semibold text-white hover:bg-danger/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isWiping ? "กำลังล้าง..." : "ล้างข้อมูล"}
-        </button>
-      </div>
+      <fieldset aria-describedby="wipe-warning wipe-confirmation-help" className="mt-5">
+        <legend className="text-sm font-semibold text-danger">เลือกขอบเขตและยืนยันการล้างข้อมูล</legend>
+        <p id="wipe-confirmation-help" className="mt-2 text-sm leading-6 text-danger/90">
+          หากต้องการดำเนินการ ให้พิมพ์ <code className="rounded bg-white px-1.5 py-0.5 font-mono">{requiredConfirmation}</code> ให้ตรงทุกตัวอักษร
+        </p>
+        <div className="mt-3 grid gap-3 lg:grid-cols-[240px_1fr_auto]">
+          <div>
+            <label htmlFor="wipe-mode" className="sr-only">
+              ขอบเขตข้อมูลที่ต้องการล้าง
+            </label>
+            <select
+              id="wipe-mode"
+              value={mode}
+              onChange={(event) => {
+                setMode(event.target.value === "all" ? "all" : "reports");
+                setConfirmation("");
+              }}
+              className="min-h-12 w-full rounded-2xl border border-danger/25 bg-white px-4 text-sm font-semibold text-ink outline-none focus:border-danger focus:ring-4 focus:ring-danger/10"
+            >
+              <option value="reports">ล้างเฉพาะข้อมูลรายงาน</option>
+              <option value="all">ล้างข้อมูลระบบทั้งหมด</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="wipe-confirmation" className="sr-only">
+              คำยืนยันการล้างข้อมูล
+            </label>
+            <input
+              id="wipe-confirmation"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              placeholder={`พิมพ์ ${requiredConfirmation}`}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-h-12 w-full rounded-2xl border border-danger/25 bg-white px-4 text-sm text-ink outline-none focus:border-danger focus:ring-4 focus:ring-danger/10"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={wipeData}
+            disabled={isWiping || confirmation !== requiredConfirmation}
+            className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-danger px-5 py-3 text-sm font-semibold text-white hover:bg-danger/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isWiping ? "กำลังล้าง..." : "ล้างข้อมูลถาวร"}
+          </button>
+        </div>
+      </fieldset>
 
       {resultMessage ? (
-        <p className="mt-4 rounded-2xl border border-success/20 bg-white px-4 py-3 text-sm leading-6 text-success">
+        <p role="status" className="mt-4 rounded-2xl border border-success/20 bg-white px-4 py-3 text-sm leading-6 text-success">
           {resultMessage}
         </p>
       ) : null}
 
       {errorMessage ? (
-        <p className="mt-4 rounded-2xl border border-danger/20 bg-white px-4 py-3 text-sm leading-6 text-danger">
+        <p role="alert" className="mt-4 rounded-2xl border border-danger/20 bg-white px-4 py-3 text-sm leading-6 text-danger">
           {errorMessage}
         </p>
       ) : null}

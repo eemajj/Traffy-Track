@@ -14,10 +14,8 @@ import { createZipBuffer } from "@/lib/zip";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { batchId: string } }
-) {
+export async function GET(_request: Request, props: { params: Promise<{ batchId: string }> }) {
+  const params = await props.params;
   const unauthorized = await requireApiSession();
   if (unauthorized) {
     return unauthorized;

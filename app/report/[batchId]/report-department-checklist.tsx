@@ -10,18 +10,24 @@ type ChecklistDepartment = {
   dept_name: string;
   evidence_file_url: string | null;
   evidence_uploaded_at: string | null;
+  current_evidence_version_id: string | null;
+  evidence_review_status: "pending" | "approved" | "rejected" | "legacy_unverified" | null;
+  evidence_review_note: string | null;
+  evidence_version_number: number | null;
+  evidence_original_filename: string | null;
   itemCount: number;
 };
 
 type ReportDepartmentChecklistProps = {
   batchId: string;
   initialDepartments: ChecklistDepartment[];
+  canManageEvidence: boolean;
 };
 
 type DepartmentEvidenceStatus = Pick<
   ChecklistDepartment,
   "id" | "dept_name" | "evidence_file_url" | "evidence_uploaded_at"
->;
+> & Pick<ChecklistDepartment, "current_evidence_version_id" | "evidence_review_status" | "evidence_review_note" | "evidence_version_number" | "evidence_original_filename">;
 
 async function fetchDepartmentEvidenceStatuses(batchId: string) {
   const response = await fetch(`/api/report/${batchId}/departments`, {
@@ -55,7 +61,12 @@ function mergeDepartmentEvidenceStatuses(
     return {
       ...department,
       evidence_file_url: status.evidence_file_url,
-      evidence_uploaded_at: status.evidence_uploaded_at
+      evidence_uploaded_at: status.evidence_uploaded_at,
+      current_evidence_version_id: status.current_evidence_version_id,
+      evidence_review_status: status.evidence_review_status,
+      evidence_review_note: status.evidence_review_note,
+      evidence_version_number: status.evidence_version_number,
+      evidence_original_filename: status.evidence_original_filename
     };
   });
 }
@@ -71,14 +82,31 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-export function ReportDepartmentChecklist({ batchId, initialDepartments }: ReportDepartmentChecklistProps) {
+function getReviewLabel(status: ChecklistDepartment["evidence_review_status"]) {
+  if (status === "approved") return "อนุมัติแล้ว";
+  if (status === "rejected") return "ตีกลับ";
+  if (status === "legacy_unverified") return "ข้อมูลเดิม—รอยืนยัน";
+  return "รอตรวจ";
+}
+
+function getReviewClassName(status: ChecklistDepartment["evidence_review_status"]) {
+  if (status === "approved") return "bg-success/10 text-success";
+  if (status === "rejected") return "bg-danger/10 text-danger";
+  return "bg-warning/10 text-warning";
+}
+
+export function ReportDepartmentChecklist({ batchId, initialDepartments, canManageEvidence }: ReportDepartmentChecklistProps) {
   const [departments, setDepartments] = useState(initialDepartments);
   const [deletingDepartmentId, setDeletingDepartmentId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [reviewingDepartmentId, setReviewingDepartmentId] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [withdrawalDepartmentId, setWithdrawalDepartmentId] = useState<string | null>(null);
+  const [withdrawalReasons, setWithdrawalReasons] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let isActive = true;
-    setDepartments(initialDepartments);
 
     async function refreshStatuses() {
       const statuses = await fetchDepartmentEvidenceStatuses(batchId);
@@ -100,6 +128,11 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
     dept_name: string;
     evidence_file_url: string;
     evidence_uploaded_at: string;
+    current_evidence_version_id?: string;
+    evidence_review_status?: ChecklistDepartment["evidence_review_status"];
+    evidence_review_note?: string | null;
+    evidence_version_number?: number;
+    evidence_original_filename?: string;
   }) {
     setDepartments((currentDepartments) =>
       currentDepartments.map((department) =>
@@ -107,7 +140,12 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
           ? {
               ...department,
               evidence_file_url: uploadedDepartment.evidence_file_url,
-              evidence_uploaded_at: uploadedDepartment.evidence_uploaded_at
+              evidence_uploaded_at: uploadedDepartment.evidence_uploaded_at,
+              current_evidence_version_id: uploadedDepartment.current_evidence_version_id || null,
+              evidence_review_status: uploadedDepartment.evidence_review_status || "pending",
+              evidence_review_note: uploadedDepartment.evidence_review_note || null,
+              evidence_version_number: uploadedDepartment.evidence_version_number || null,
+              evidence_original_filename: uploadedDepartment.evidence_original_filename || null
             }
           : department
       )
@@ -120,17 +158,83 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
     });
   }
 
-  async function handleDeleteEvidence(department: ChecklistDepartment) {
+  async function handleReviewEvidence(
+    department: ChecklistDepartment,
+    decision: "approved" | "rejected"
+  ) {
+    const note = (reviewNotes[department.id] || "").trim();
+    setStatusMessage(null);
+    if (!department.current_evidence_version_id) {
+      setDeleteError("ไม่พบเวอร์ชันหลักฐาน กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง");
+      return;
+    }
+    if (decision === "rejected" && note.length < 5) {
+      setDeleteError("กรุณาระบุเหตุผลที่ตีกลับอย่างน้อย 5 ตัวอักษร");
+      return;
+    }
     setDeleteError(null);
+    setReviewingDepartmentId(department.id);
+
+    try {
+      const response = await fetch(`/api/report/${batchId}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "review",
+          dept: department.dept_name,
+          decision,
+          evidenceVersionId: department.current_evidence_version_id,
+          note: note || null
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        setDeleteError(payload?.error || "บันทึกผลตรวจหลักฐานไม่สำเร็จ");
+        if (response.status === 409) {
+          const statuses = await fetchDepartmentEvidenceStatuses(batchId);
+          if (statuses) {
+            setDepartments((current) => mergeDepartmentEvidenceStatuses(current, statuses));
+          }
+        }
+        return;
+      }
+
+      setDepartments((current) => current.map((item) =>
+        item.id === department.id
+          ? { ...item, evidence_review_status: decision, evidence_review_note: note || null }
+          : item
+      ));
+      setReviewNotes((current) => ({ ...current, [department.id]: "" }));
+      setStatusMessage(decision === "approved" ? `อนุมัติหลักฐานของ ${department.dept_name} แล้ว` : `ตีกลับหลักฐานของ ${department.dept_name} แล้ว`);
+    } finally {
+      setReviewingDepartmentId(null);
+    }
+  }
+
+  async function handleDeleteEvidence(department: ChecklistDepartment) {
+    const reason = (withdrawalReasons[department.id] || "").trim();
+    if (!department.current_evidence_version_id) {
+      setDeleteError("ไม่พบเวอร์ชันหลักฐาน กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง");
+      return;
+    }
+    if (reason.length < 5) {
+      setDeleteError("กรุณาระบุเหตุผลที่ถอนหลักฐานอย่างน้อย 5 ตัวอักษร");
+      return;
+    }
+    setDeleteError(null);
+    setStatusMessage(null);
     setDeletingDepartmentId(department.id);
 
     try {
-      const response = await fetch(
-        `/api/report/${batchId}/evidence?dept=${encodeURIComponent(department.dept_name)}`,
-        {
-          method: "DELETE"
-        }
-      );
+      const response = await fetch(`/api/report/${batchId}/evidence`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dept: department.dept_name,
+          evidenceVersionId: department.current_evidence_version_id,
+          reason
+        })
+      });
       const payload = (await response.json().catch(() => null)) as
         | {
             error?: string;
@@ -140,6 +244,12 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
 
       if (!response.ok) {
         setDeleteError(payload?.error || "ลบหลักฐานไม่สำเร็จ");
+        if (response.status === 409) {
+          const statuses = await fetchDepartmentEvidenceStatuses(batchId);
+          if (statuses) {
+            setDepartments((current) => mergeDepartmentEvidenceStatuses(current, statuses));
+          }
+        }
         return;
       }
 
@@ -150,7 +260,12 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
               ? {
                   ...currentDepartment,
                   evidence_file_url: null,
-                  evidence_uploaded_at: null
+                  evidence_uploaded_at: null,
+                  current_evidence_version_id: null,
+                  evidence_review_status: null,
+                  evidence_review_note: null,
+                  evidence_version_number: null,
+                  evidence_original_filename: null
                 }
               : currentDepartment
           )
@@ -161,6 +276,9 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
       if (statuses) {
         setDepartments((currentDepartments) => mergeDepartmentEvidenceStatuses(currentDepartments, statuses));
       }
+      setWithdrawalDepartmentId(null);
+      setWithdrawalReasons((current) => ({ ...current, [department.id]: "" }));
+      setStatusMessage(`ถอนหลักฐานของ ${department.dept_name} แล้ว`);
     } finally {
       setDeletingDepartmentId(null);
     }
@@ -169,7 +287,10 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
   return (
     <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
       <h2 className="text-xl font-semibold tracking-[-0.01em] text-ink">รายการตรวจรายฝ่าย</h2>
-      {deleteError ? <p className="mt-3 text-sm font-medium text-danger">{deleteError}</p> : null}
+      <div aria-live="polite" aria-atomic="true">
+        {deleteError ? <p className="mt-3 text-sm font-medium text-danger" role="alert">{deleteError}</p> : null}
+        {statusMessage ? <p className="mt-3 text-sm font-medium text-success" role="status">{statusMessage}</p> : null}
+      </div>
       <div className="mt-4 space-y-3">
         {departments.map((department) => {
           const hasEvidence = Boolean(department.evidence_file_url);
@@ -202,26 +323,28 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
                       ดาวน์โหลดหลักฐาน
                     </Link>
                   ) : null}
-                  {hasEvidence ? (
+                  {hasEvidence && canManageEvidence ? (
                     <button
                       type="button"
                       disabled={deletingDepartmentId === department.id}
                       onClick={() => {
-                        void handleDeleteEvidence(department);
+                        setDeleteError(null);
+                        setWithdrawalDepartmentId((current) => current === department.id ? null : department.id);
                       }}
-                      className="rounded-full border border-danger/20 bg-danger/5 px-3 py-1.5 text-sm font-semibold text-danger transition hover:-translate-y-0.5 hover:bg-danger/10 hover:shadow-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      className="min-h-11 rounded-full border border-danger/20 bg-danger/5 px-4 py-2 text-sm font-semibold text-danger transition hover:-translate-y-0.5 hover:bg-danger/10 hover:shadow-hover disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {deletingDepartmentId === department.id ? "กำลังลบ..." : "ลบหลักฐาน"}
+                      {deletingDepartmentId === department.id ? "กำลังถอน..." : "ถอนหลักฐาน"}
                     </button>
                   ) : null}
+                  {hasEvidence ? (
+                    <span className={`rounded-full px-3 py-1 text-sm font-semibold ${getReviewClassName(department.evidence_review_status)}`}>
+                      {getReviewLabel(department.evidence_review_status)}
+                    </span>
+                  ) : null}
                   <span
-                    className={`rounded-full px-3 py-1 text-sm font-semibold ${
-                      department.evidence_uploaded_at
-                        ? "bg-[rgba(31,122,90,0.12)] text-success"
-                        : "bg-[rgba(201,131,34,0.12)] text-warning"
-                    }`}
+                    className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-muted"
                   >
-                    {department.evidence_uploaded_at ? "อัปโหลดหลักฐานแล้ว" : "ยังไม่มีหลักฐาน"}
+                    {department.evidence_uploaded_at ? "มีไฟล์หลักฐาน" : "ยังไม่มีหลักฐาน"}
                   </span>
                   <span className="rounded-full bg-white px-3 py-1 text-sm text-muted">
                     {department.evidence_uploaded_at
@@ -230,10 +353,99 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments }: Repor
                   </span>
                 </div>
               </div>
+              {hasEvidence ? (
+                <div className="space-y-3 border-t border-border/70 pt-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted">
+                    {department.evidence_version_number ? `เวอร์ชัน ${department.evidence_version_number}` : "หลักฐานเดิม"}
+                    {department.evidence_original_filename ? ` · ${department.evidence_original_filename}` : ""}
+                  </p>
+                  {department.evidence_review_note ? (
+                    <p className={department.evidence_review_status === "rejected" ? "text-sm font-medium text-danger" : "text-sm text-muted"}>
+                      {department.evidence_review_status === "rejected" ? "เหตุผลที่ตีกลับ: " : "หมายเหตุ: "}
+                      {department.evidence_review_note}
+                    </p>
+                  ) : null}
+                  </div>
+                  {canManageEvidence && (department.evidence_review_status === "pending" || department.evidence_review_status === "legacy_unverified") ? (
+                    <div className="rounded-2xl bg-white p-3" aria-label={`ตรวจหลักฐานของ ${department.dept_name}`}>
+                      <label className="block text-sm font-semibold text-ink" htmlFor={`review-note-${department.id}`}>
+                        เหตุผลเมื่อตีกลับ <span className="font-normal text-muted">(จำเป็นอย่างน้อย 5 ตัวอักษร)</span>
+                      </label>
+                      <textarea
+                        id={`review-note-${department.id}`}
+                        value={reviewNotes[department.id] || ""}
+                        onChange={(event) => setReviewNotes((current) => ({ ...current, [department.id]: event.target.value }))}
+                        maxLength={1000}
+                        rows={2}
+                        placeholder="ระบุสิ่งที่ต้องแก้ไข เพื่อให้เจ้าหน้าที่ดำเนินการต่อได้ทันที"
+                        className="mt-2 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
+                      />
+                      <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={reviewingDepartmentId === department.id}
+                        onClick={() => void handleReviewEvidence(department, "approved")}
+                        className="min-h-11 rounded-xl bg-success px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        อนุมัติหลักฐาน
+                      </button>
+                      <button
+                        type="button"
+                        disabled={reviewingDepartmentId === department.id || (reviewNotes[department.id] || "").trim().length < 5}
+                        onClick={() => void handleReviewEvidence(department, "rejected")}
+                        className="min-h-11 rounded-xl border border-danger/30 bg-white px-4 py-2 text-sm font-semibold text-danger hover:bg-danger/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        ตีกลับ
+                      </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {hasEvidence && canManageEvidence && withdrawalDepartmentId === department.id ? (
+                <div className="rounded-2xl border border-danger/20 bg-danger/5 p-4" role="group" aria-labelledby={`withdraw-title-${department.id}`}>
+                  <h4 id={`withdraw-title-${department.id}`} className="text-sm font-semibold text-danger">
+                    ยืนยันถอนหลักฐานเวอร์ชัน {department.evidence_version_number || "ปัจจุบัน"}
+                  </h4>
+                  <p className="mt-1 text-xs leading-5 text-muted">ระบบจะหยุดใช้ไฟล์นี้เป็นหลักฐานปัจจุบันและบันทึกเหตุผลไว้ในประวัติ</p>
+                  <label className="mt-3 block text-sm font-semibold text-ink" htmlFor={`withdraw-reason-${department.id}`}>
+                    เหตุผลที่ถอน <span className="font-normal text-muted">(อย่างน้อย 5 ตัวอักษร)</span>
+                  </label>
+                  <textarea
+                    id={`withdraw-reason-${department.id}`}
+                    value={withdrawalReasons[department.id] || ""}
+                    onChange={(event) => setWithdrawalReasons((current) => ({ ...current, [department.id]: event.target.value }))}
+                    maxLength={1000}
+                    rows={2}
+                    className="mt-2 w-full rounded-xl border border-danger/25 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-danger focus:ring-4 focus:ring-danger/10"
+                    placeholder="เช่น อัปโหลดผิดฝ่าย หรือเลือกไฟล์ผิดฉบับ"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={deletingDepartmentId === department.id || (withdrawalReasons[department.id] || "").trim().length < 5}
+                      onClick={() => void handleDeleteEvidence(department)}
+                      className="min-h-11 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingDepartmentId === department.id ? "กำลังถอน..." : "ยืนยันถอนหลักฐาน"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deletingDepartmentId === department.id}
+                      onClick={() => setWithdrawalDepartmentId(null)}
+                      className="min-h-11 rounded-xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-60"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <EvidenceUploadForm
                 batchId={batchId}
                 deptName={department.dept_name}
                 hasEvidence={hasEvidence}
+                canAutoApprove={canManageEvidence}
                 onUploaded={handleUploaded}
               />
             </div>

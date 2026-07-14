@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { requireApiSession } from "@/lib/api-auth";
+import { requireApiRole } from "@/lib/api-auth";
 import { previewSystemWipe, wipeSystemData } from "@/lib/admin";
+import { recordAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ function normalizeMode(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiRole("admin");
   if (unauthorized) {
     return unauthorized;
   }
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiRole("admin");
   if (unauthorized) {
     return unauthorized;
   }
@@ -51,6 +52,12 @@ export async function POST(request: Request) {
       mode: normalizeMode(payload.mode),
       confirmation: payload.confirmation || ""
     });
+    await recordAuditEvent({
+      action: "system.wipe",
+      resourceType: "system",
+      resourceId: normalizeMode(payload.mode),
+      metadata: { mode: normalizeMode(payload.mode) }
+    });
 
     return NextResponse.json(result, {
       headers: {
@@ -58,6 +65,13 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
+    await recordAuditEvent({
+      action: "system.wipe",
+      resourceType: "system",
+      resourceId: "attempt",
+      outcome: "failure",
+      metadata: { message: error instanceof Error ? error.message : "unknown error" }
+    });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "ล้างข้อมูลระบบไม่สำเร็จ"

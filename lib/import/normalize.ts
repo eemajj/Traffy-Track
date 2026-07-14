@@ -1,6 +1,6 @@
-import { CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
-
-type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
+import { CsvColumnMap, CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
+import { parseCoordinates } from "@/lib/coordinates";
+import { getSafeHttpsUrl } from "@/lib/safe-url";
 
 const optionalCsvColumns = new Set<RequiredCsvColumn>([
   "photo",
@@ -65,21 +65,7 @@ function parseInteger(value: string | undefined) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-function parseCoords(value: string | undefined) {
-  const normalized = cleanValue(value);
-  if (!normalized) {
-    return { lat: null, lng: null };
-  }
-
-  const parts = normalized.split(",").map((part) => Number.parseFloat(part.trim()));
-  if (parts.length !== 2 || parts.some((part) => Number.isNaN(part))) {
-    return { lat: null, lng: null };
-  }
-
-  return { lat: parts[0], lng: parts[1] };
-}
-
-export function validateCsvColumns(columns: string[]): CsvColumnMap {
+export function analyzeCsvColumns(columns: string[]) {
   const headerLookup = new Map<string, string>();
 
   for (const column of columns) {
@@ -92,6 +78,7 @@ export function validateCsvColumns(columns: string[]): CsvColumnMap {
 
   const columnMap = {} as CsvColumnMap;
   const missingColumns: RequiredCsvColumn[] = [];
+  const missingOptionalColumns: RequiredCsvColumn[] = [];
 
   for (const column of requiredCsvColumns) {
     const matchedColumn = getAcceptedHeaderKeys(column)
@@ -101,6 +88,8 @@ export function validateCsvColumns(columns: string[]): CsvColumnMap {
     if (!matchedColumn) {
       if (!optionalCsvColumns.has(column)) {
         missingColumns.push(column);
+      } else {
+        missingOptionalColumns.push(column);
       }
       continue;
     }
@@ -108,11 +97,21 @@ export function validateCsvColumns(columns: string[]): CsvColumnMap {
     columnMap[column] = matchedColumn;
   }
 
-  if (missingColumns.length > 0) {
-    throw new Error(`CSV is missing required columns: ${missingColumns.join(", ")}`);
+  return {
+    columnMap,
+    missingRequiredColumns: missingColumns,
+    missingOptionalColumns
+  };
+}
+
+export function validateCsvColumns(columns: string[]): CsvColumnMap {
+  const analysis = analyzeCsvColumns(columns);
+
+  if (analysis.missingRequiredColumns.length > 0) {
+    throw new Error(`CSV is missing required columns: ${analysis.missingRequiredColumns.join(", ")}`);
   }
 
-  return columnMap;
+  return analysis.columnMap;
 }
 
 export function pickCsvRowValue(row: Record<string, string>, column: string | undefined) {
@@ -162,13 +161,13 @@ export function deriveDepartmentList(orgList: string[]) {
 export function normalizeTicket(row: CsvRow): TicketRecord {
   const orgList = parseOrgList(row.org_response);
   const deptList = deriveDepartmentList(orgList);
-  const coords = parseCoords(row.coords);
+  const coords = parseCoordinates(row.coords);
 
   return {
     ticket_id: row.ticket_id.trim(),
     type: cleanValue(row.type),
     comment: cleanValue(row.comment),
-    photo_url: cleanValue(row.photo),
+    photo_url: getSafeHttpsUrl(row.photo),
     address: cleanValue(row.address),
     subdistrict: cleanValue(row.subdistrict),
     district: cleanValue(row.district),

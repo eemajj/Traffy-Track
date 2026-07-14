@@ -7,3 +7,8 @@ export function isClosedTicketState(state: string | null) {
 export function buildClosedStatesFilter() {
   return `(${CLOSED_TICKET_STATES.map((state) => `"${state}"`).join(",")})`;
 }
+
+export function buildPendingStatesOrFilter(prefix = "") {
+  const field = `${prefix}state`;
+  return `${field}.is.null,${field}.not.in.${buildClosedStatesFilter()}`;
+}

@@ -6,10 +6,8 @@ import { getReportBatchSummaryData } from "@/lib/report";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { batchId: string } }
-) {
+export async function GET(_request: Request, props: { params: Promise<{ batchId: string }> }) {
+  const params = await props.params;
   const unauthorized = await requireApiSession();
   if (unauthorized) {
     return unauthorized;
@@ -36,6 +34,10 @@ export async function GET(
       itemCount: summaryData.itemCount,
       evidenceUploadedCount: summaryData.evidenceUploadedCount,
       evidencePendingCount: summaryData.evidencePendingCount,
+      evidenceMissingCount: summaryData.evidenceMissingCount,
+      evidencePendingReviewCount: summaryData.evidencePendingReviewCount,
+      evidenceRejectedCount: summaryData.evidenceRejectedCount,
+      evidenceApprovedCount: summaryData.evidenceApprovedCount,
       evidenceProgressPercent: summaryData.evidenceProgressPercent,
       uploadedDepartments: summaryData.uploadedDepartments,
       pendingDepartments: summaryData.pendingDepartments

@@ -1,8 +1,10 @@
 import { unstable_noStore as noStore } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
+import { getSafeHttpsUrl } from "@/lib/safe-url";
 import { createSupabaseAdminClient } from "@/lib/supabase";
-import { CLOSED_TICKET_STATES, buildClosedStatesFilter, isClosedTicketState } from "@/lib/tickets";
+import { getCachedTicketFilterOptions } from "@/lib/ticket-filter-options";
+import { CLOSED_TICKET_STATES, buildPendingStatesOrFilter, isClosedTicketState } from "@/lib/tickets";
 
 const DEFAULT_CASES_PAGE_SIZE = 50;
 const ALLOWED_CASES_PAGE_SIZES = [10, 50, 100] as const;
@@ -183,7 +185,15 @@ function doesTicketMatchListFilters(ticket: CaseListItem, filters: { q: string; 
   return true;
 }
 
-function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; contains: Function; not: Function; or: Function }>(
+interface TicketFilterQuery {
+  ilike(column: string, pattern: string): this;
+  eq(column: string, value: unknown): this;
+  contains(column: string, value: unknown): this;
+  not(column: string, operator: string, value: unknown): this;
+  or(filters: string): this;
+}
+
+function addTicketFilters<QueryBuilder extends TicketFilterQuery>(
   query: QueryBuilder,
   filters: {
     q: string;
@@ -197,7 +207,7 @@ function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; 
   let nextQuery = query;
 
   if (filters.view === "pending" || filters.view === "reopened" || filters.view === "status-changed") {
-    nextQuery = nextQuery.not(`${prefix}state`, "in", buildClosedStatesFilter());
+    nextQuery = nextQuery.or(buildPendingStatesOrFilter(prefix));
   }
 
   if (filters.view === "closed") {
@@ -207,7 +217,7 @@ function addTicketFilters<QueryBuilder extends { ilike: Function; eq: Function; 
   }
 
   if (filters.view === "unassigned") {
-    nextQuery = nextQuery.not(`${prefix}state`, "in", buildClosedStatesFilter()).or(
+    nextQuery = nextQuery.or(buildPendingStatesOrFilter(prefix)).or(
       `${prefix}dept_list.is.null,${prefix}dept_list.eq.{}`
     );
   }
@@ -254,7 +264,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const [latestBatchResult, statesResult, departmentsResult] = await Promise.all([
+    const [latestBatchResult, filterOptions] = await Promise.all([
       supabase
         .from("import_batches")
         .select("id, imported_at, filename")
@@ -262,25 +272,15 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
         .order("imported_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.from("tickets").select("state").not("state", "is", null).order("state", { ascending: true }).limit(20000),
-      supabase.rpc("dashboard_pending_by_department")
+      getCachedTicketFilterOptions()
     ]);
 
     if (latestBatchResult.error) {
       throw new Error(`โหลดรอบนำเข้าล่าสุดไม่สำเร็จ: ${latestBatchResult.error.message}`);
     }
 
-    if (statesResult.error) {
-      throw new Error(`โหลดรายการสถานะไม่สำเร็จ: ${statesResult.error.message}`);
-    }
-
-    if (departmentsResult.error) {
-      throw new Error(`โหลดรายการฝ่ายไม่สำเร็จ: ${departmentsResult.error.message}`);
-    }
-
     const latestBatch = latestBatchResult.data as { id: string; imported_at: string; filename: string | null } | null;
-    const stateOptions = Array.from(new Set(((statesResult.data as Array<{ state: string | null }> | null) || []).map((row) => row.state).filter(Boolean) as string[]));
-    const departmentOptions = (((departmentsResult.data as Array<{ dept_name: string }> | null) || []).map((row) => row.dept_name));
+    const { stateOptions, departmentOptions } = filterOptions;
 
     if (view === "reopened" || view === "status-changed") {
       if (!latestBatch) {
@@ -443,6 +443,7 @@ export async function getCaseDetailData(ticketId: string): Promise<CaseDetailDat
       status: "ready",
       ticket: {
         ...ticket,
+        photo_url: getSafeHttpsUrl(ticket.photo_url),
         org_list: Array.isArray(ticket.org_list) ? ticket.org_list : [],
         dept_list: Array.isArray(ticket.dept_list) ? ticket.dept_list : []
       },

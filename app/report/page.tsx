@@ -10,44 +10,48 @@ import {
 import { CreateReportSubmitButton } from "@/app/report/create-report-submit-button";
 import { ReportBatchSubmitButton } from "@/app/report/report-batch-submit-button";
 import { getReportPageData } from "@/lib/report";
+import { BANGKOK_TIME_ZONE, getBangkokCurrentMonthRange, getBangkokTodayValue } from "@/lib/report-date";
 
 export const dynamic = "force-dynamic";
 
 type ReportPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     status?: string;
     from?: string;
     to?: string;
     sort?: string;
-  };
+  }>;
 };
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium"
+    dateStyle: "medium",
+    timeZone: BANGKOK_TIME_ZONE
   }).format(new Date(value));
 }
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: BANGKOK_TIME_ZONE
   }).format(new Date(value));
-}
-
-function getTodayValue() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getCurrentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-  return { start, end };
 }
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("th-TH").format(value);
+}
+
+function getArchiveEvidenceBadge(status: string | null, uploaded: boolean, legacy: boolean) {
+  if (legacy) {
+    return uploaded
+      ? { label: "มีไฟล์ตามเกณฑ์เดิม", className: "bg-warning/10 text-warning" }
+      : { label: "ยังไม่ส่ง", className: "bg-danger/10 text-danger" };
+  }
+  if (status === "approved") return { label: "อนุมัติแล้ว", className: "bg-success/10 text-success" };
+  if (status === "rejected") return { label: "ตีกลับ", className: "bg-danger/10 text-danger" };
+  if (uploaded) return { label: "รอตรวจ", className: "bg-warning/10 text-warning" };
+  return { label: "ยังไม่ส่ง", className: "bg-danger/10 text-danger" };
 }
 
 function buildReportHref(params: Record<string, string | number | null | undefined>) {
@@ -63,9 +67,10 @@ function buildReportHref(params: Record<string, string | number | null | undefin
   return query ? `/report?${query}` : "/report";
 }
 
-export default async function ReportPage({ searchParams = {} }: ReportPageProps) {
+export default async function ReportPage(props: ReportPageProps) {
+  const searchParams = await props.searchParams;
   const data = await getReportPageData(searchParams);
-  const currentMonth = getCurrentMonthRange();
+  const currentMonth = getBangkokCurrentMonthRange();
 
   return (
     <AppShell
@@ -115,13 +120,14 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
               </div>
 
               <form action={createReportBatchAction} className="mt-6 space-y-4">
+                <input type="hidden" name="idempotency_key" value={crypto.randomUUID()} />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="space-y-2">
                     <span className="text-sm font-semibold text-ink">วันที่ของรอบรายงาน</span>
                     <input
                       type="date"
                       name="report_date"
-                      defaultValue={getTodayValue()}
+                      defaultValue={getBangkokTodayValue()}
                       required
                       className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-ink outline-none focus:border-brand focus:bg-white focus:shadow-[0_0_0_4px_var(--ring)]"
                     />
@@ -185,30 +191,54 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
                   href="/report"
+                  aria-current={data.filters.status === "all" && !data.filters.from && !data.filters.to ? "page" : undefined}
                   className={
                     data.filters.status === "all" && !data.filters.from && !data.filters.to
-                      ? "rounded-2xl bg-brand px-4 py-2 text-sm font-semibold text-white"
-                      : "rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
+                      ? "inline-flex min-h-11 items-center rounded-2xl bg-brand px-4 py-2 text-sm font-semibold text-white"
+                      : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
                   }
                 >
                   ทั้งหมด
                 </Link>
                 <Link
                   href={buildReportHref({ status: "pending", sort: "progress_asc" })}
+                  aria-current={data.filters.status === "pending" ? "page" : undefined}
                   className={
                     data.filters.status === "pending"
-                      ? "rounded-2xl bg-warning px-4 py-2 text-sm font-semibold text-white"
-                      : "rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-warning/40 hover:bg-white hover:text-warning"
+                      ? "inline-flex min-h-11 items-center rounded-2xl bg-warning px-4 py-2 text-sm font-semibold text-white"
+                      : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-warning/40 hover:bg-white hover:text-warning"
                   }
                 >
-                  ยังส่งหลักฐานไม่ครบ
+                  ต้องดำเนินการ
+                </Link>
+                <Link
+                  href={buildReportHref({ status: "missing", sort: "progress_asc" })}
+                  aria-current={data.filters.status === "missing" ? "page" : undefined}
+                  className={data.filters.status === "missing" ? "inline-flex min-h-11 items-center rounded-2xl bg-warning px-4 py-2 text-sm font-semibold text-white" : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-warning/40 hover:bg-white hover:text-warning"}
+                >
+                  ยังไม่ส่ง
+                </Link>
+                <Link
+                  href={buildReportHref({ status: "review", sort: "progress_asc" })}
+                  aria-current={data.filters.status === "review" ? "page" : undefined}
+                  className={data.filters.status === "review" ? "inline-flex min-h-11 items-center rounded-2xl bg-warning px-4 py-2 text-sm font-semibold text-white" : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-warning/40 hover:bg-white hover:text-warning"}
+                >
+                  รอตรวจ
+                </Link>
+                <Link
+                  href={buildReportHref({ status: "rejected", sort: "progress_asc" })}
+                  aria-current={data.filters.status === "rejected" ? "page" : undefined}
+                  className={data.filters.status === "rejected" ? "inline-flex min-h-11 items-center rounded-2xl bg-danger px-4 py-2 text-sm font-semibold text-white" : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-danger/40 hover:bg-white hover:text-danger"}
+                >
+                  ตีกลับ
                 </Link>
                 <Link
                   href={buildReportHref({ status: "complete", sort: "report_date_desc" })}
+                  aria-current={data.filters.status === "complete" ? "page" : undefined}
                   className={
                     data.filters.status === "complete"
-                      ? "rounded-2xl bg-success px-4 py-2 text-sm font-semibold text-white"
-                      : "rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-success/40 hover:bg-white hover:text-success"
+                      ? "inline-flex min-h-11 items-center rounded-2xl bg-success px-4 py-2 text-sm font-semibold text-white"
+                      : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-success/40 hover:bg-white hover:text-success"
                   }
                 >
                   รายงานครบถ้วน
@@ -217,15 +247,15 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                   href={buildReportHref({ from: currentMonth.start, to: currentMonth.end, sort: data.filters.sort })}
                   className={
                     data.filters.from === currentMonth.start && data.filters.to === currentMonth.end
-                      ? "rounded-2xl bg-brand px-4 py-2 text-sm font-semibold text-white"
-                      : "rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
+                      ? "inline-flex min-h-11 items-center rounded-2xl bg-brand px-4 py-2 text-sm font-semibold text-white"
+                      : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
                   }
                 >
                   เดือนนี้
                 </Link>
                 <Link
                   href={buildReportHref({ sort: "report_date_desc" })}
-                  className="rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
+                  className="inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
                 >
                   รอบล่าสุด
                 </Link>
@@ -258,8 +288,11 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                     className="min-h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
                   >
                     <option value="all">ทั้งหมด</option>
-                    <option value="pending">ยังไม่ครบ</option>
-                    <option value="complete">ครบแล้ว</option>
+                    <option value="pending">ต้องดำเนินการ</option>
+                    <option value="missing">ยังไม่ส่ง</option>
+                    <option value="review">รอตรวจ</option>
+                    <option value="rejected">ตีกลับให้แก้</option>
+                    <option value="complete">อนุมัติครบแล้ว</option>
                   </select>
                 </label>
                 <label className="space-y-2">
@@ -334,9 +367,9 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                           <p className="mt-2 text-2xl font-semibold text-ink">{formatNumber(batch.itemCount)}</p>
                         </div>
                         <div className="rounded-2xl bg-white p-4">
-                          <p className="text-sm text-muted">หลักฐาน</p>
+                          <p className="text-sm text-muted">การอนุมัติหลักฐาน</p>
                           <p className="mt-2 text-2xl font-semibold text-ink">
-                            {formatNumber(batch.evidenceUploadedCount)}/{formatNumber(batch.departmentCount)}
+                            {formatNumber(batch.evidenceApprovedCount)}/{formatNumber(batch.departmentCount)}
                           </p>
                           <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-strong">
                             <div
@@ -346,10 +379,17 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                           </div>
                           <p className="mt-2 text-xs text-muted">
                             {batch.evidencePendingCount === 0
-                              ? "ครบทุกฝ่ายแล้ว"
-                              : `ยังค้าง ${formatNumber(batch.evidencePendingCount)} ฝ่าย`}
+                              ? "อนุมัติครบทุกฝ่ายแล้ว"
+                              : `ยังไม่อนุมัติ ${formatNumber(batch.evidencePendingCount)} ฝ่าย`}
                           </p>
                         </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                        <span className="rounded-full bg-warning/10 px-3 py-1 text-warning">ยังไม่ส่ง {formatNumber(batch.evidenceMissingCount)}</span>
+                        <span className="rounded-full bg-warning/10 px-3 py-1 text-warning">รอตรวจ {formatNumber(batch.evidencePendingReviewCount)}</span>
+                        <span className="rounded-full bg-danger/10 px-3 py-1 text-danger">ตีกลับ {formatNumber(batch.evidenceRejectedCount)}</span>
+                        <span className="rounded-full bg-success/10 px-3 py-1 text-success">อนุมัติ {formatNumber(batch.evidenceApprovedCount)}</span>
                       </div>
 
                       <details className="mt-4 rounded-2xl border border-border bg-white">
@@ -437,8 +477,13 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                                 : "rounded-full border border-danger/25 bg-danger/10 px-3 py-1 text-xs font-semibold text-danger"
                             }
                           >
-                            {archive.completionStatus === "complete" ? "หลักฐานครบ" : "หลักฐานยังไม่ครบ"}
+                            {archive.completionStatus === "complete" ? "อนุมัติครบ" : "ยังไม่อนุมัติครบ"}
                           </span>
+                          {archive.evidenceSemantics === "legacy_uploaded_v0" ? (
+                            <span className="rounded-full border border-warning/25 bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
+                              Archive เดิม—รอยืนยันย้อนหลัง
+                            </span>
+                          ) : null}
                           {archive.sourceDeleted ? (
                             <span className="rounded-full border border-warning/25 bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
                               ล้าง source แล้ว
@@ -455,33 +500,43 @@ export default async function ReportPage({ searchParams = {} }: ReportPageProps)
                       </div>
                       <div className="rounded-2xl bg-white px-4 py-3 text-sm text-muted">
                         <p className="font-semibold text-ink">
-                          {formatNumber(archive.evidenceUploadedCount)}/{formatNumber(archive.departmentCount)} ฝ่ายส่งหลักฐาน
+                          {archive.evidenceSemantics === "approved_v1"
+                            ? `${formatNumber(archive.evidenceApprovedCount)}/${formatNumber(archive.departmentCount)} ฝ่ายอนุมัติแล้ว`
+                            : `${formatNumber(archive.evidenceUploadedCount)}/${formatNumber(archive.departmentCount)} ฝ่ายมีไฟล์ตามเกณฑ์เดิม`}
                         </p>
                         <p className="mt-1">รวม {formatNumber(archive.itemCount)} รายการเรื่อง</p>
                       </div>
                     </div>
 
+                    {archive.evidenceSemantics === "approved_v1" ? (
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                        <span className="rounded-full bg-warning/10 px-3 py-1 text-warning">ยังไม่ส่ง {formatNumber(archive.evidenceMissingCount)}</span>
+                        <span className="rounded-full bg-warning/10 px-3 py-1 text-warning">รอตรวจ {formatNumber(archive.evidencePendingReviewCount)}</span>
+                        <span className="rounded-full bg-danger/10 px-3 py-1 text-danger">ตีกลับ {formatNumber(archive.evidenceRejectedCount)}</span>
+                        <span className="rounded-full bg-success/10 px-3 py-1 text-success">อนุมัติ {formatNumber(archive.evidenceApprovedCount)}</span>
+                      </div>
+                    ) : null}
+
                     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {archive.departments.map((department) => (
-                        <div key={`${archive.id}-${department.deptName}`} className="rounded-2xl bg-white px-4 py-3">
+                      {archive.departments.map((department) => {
+                        const badge = getArchiveEvidenceBadge(
+                          department.evidenceReviewStatus,
+                          department.evidenceUploaded,
+                          archive.evidenceSemantics === "legacy_uploaded_v0"
+                        );
+                        return <div key={`${archive.id}-${department.deptName}`} className="rounded-2xl bg-white px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <p className="text-sm font-semibold leading-6 text-ink">{department.deptName}</p>
-                            <span
-                              className={
-                                department.evidenceUploaded
-                                  ? "rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
-                                  : "rounded-full bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger"
-                              }
-                            >
-                              {department.evidenceUploaded ? "ส่งแล้ว" : "ยังไม่ส่ง"}
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badge.className}`}>
+                              {badge.label}
                             </span>
                           </div>
                           <p className="mt-2 text-xs leading-5 text-muted">
                             {formatNumber(department.itemCount)} เรื่อง
                             {department.evidenceUploadedAt ? ` · ${formatDateTime(department.evidenceUploadedAt)}` : ""}
                           </p>
-                        </div>
-                      ))}
+                        </div>;
+                      })}
                     </div>
                   </article>
                 ))

@@ -22,6 +22,8 @@ const HEADER_ROW_HEIGHT = 30;
 const MIN_ROW_HEIGHT = 56;
 const MAX_ROW_HEIGHT = 118;
 const CELL_PADDING = 4;
+const THAI_FONT_PATH = path.join(process.cwd(), "public", "fonts", "tahoma.ttf");
+const THAI_BOLD_FONT_PATH = path.join(process.cwd(), "public", "fonts", "tahomabd.ttf");
 
 const columns: PdfTableColumn[] = [
   { key: "index", label: "ลำดับ", width: 28, align: "center" },
@@ -58,29 +60,11 @@ function formatDateTime(value: string | null) {
 }
 
 function getThaiFontPath() {
-  const candidates = [
-    path.join(process.cwd(), "public", "fonts", "tahoma.ttf"),
-    path.join(process.cwd(), "public", "fonts", "Tahoma.ttf"),
-    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.ttf"),
-    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Regular.woff"),
-    "/System/Library/Fonts/Supplemental/Tahoma.ttf",
-    "/Library/Fonts/Tahoma.ttf"
-  ];
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+  return fs.existsSync(THAI_FONT_PATH) ? THAI_FONT_PATH : null;
 }
 
 function getThaiBoldFontPath() {
-  const candidates = [
-    path.join(process.cwd(), "public", "fonts", "tahomabd.ttf"),
-    path.join(process.cwd(), "public", "fonts", "Tahoma Bold.ttf"),
-    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.ttf"),
-    path.join(process.cwd(), "public", "fonts", "NotoSansThai-Bold.woff"),
-    "/System/Library/Fonts/Supplemental/Tahoma Bold.ttf",
-    "/Library/Fonts/Tahoma Bold.ttf"
-  ];
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) || getThaiFontPath();
+  return fs.existsSync(THAI_BOLD_FONT_PATH) ? THAI_BOLD_FONT_PATH : getThaiFontPath();
 }
 
 function addText(
@@ -178,7 +162,7 @@ function addPageFooter(doc: PDFKit.PDFDocument, pageIndex: number, pageCount: nu
     doc.page.height - 25,
     90,
     14,
-    { size: 8, align: "right", color: "#5b6b84" }
+    { size: 8, align: "right", color: "#526b61" }
   );
 }
 

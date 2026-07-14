@@ -1,3 +1,5 @@
+import type { DataQualitySignals } from "@/lib/data-quality";
+
 export const requiredCsvColumns = [
   "ticket_id",
   "type",
@@ -17,6 +19,8 @@ export const requiredCsvColumns = [
 ] as const;
 
 export type RequiredCsvColumn = (typeof requiredCsvColumns)[number];
+
+export type CsvColumnMap = Partial<Record<RequiredCsvColumn, string>>;
 
 export type CsvRow = Record<RequiredCsvColumn, string>;
 
@@ -41,13 +45,7 @@ export type TicketRecord = {
   lng: number | null;
 };
 
-export type ExistingTicketSnapshot = {
-  ticket_id: string;
-  state: string | null;
-  org_response: string | null;
-  last_activity: string | null;
-  star: number | null;
-};
+export type ExistingTicketSnapshot = TicketRecord;
 
 export type TicketHistoryInsert = {
   ticket_id: string;
@@ -77,4 +75,30 @@ export type ImportJob = ImportSummary & {
   errorMessage: string | null;
   importedAt: string;
   completedAt: string | null;
+};
+
+export type ImportPreview = {
+  filename: string;
+  bytesRead: number;
+  fileSize: number | null;
+  sampledRows: number;
+  estimatedRows: number | null;
+  headers: string[];
+  mappedColumns: Partial<Record<RequiredCsvColumn, string>>;
+  missingRequiredColumns: RequiredCsvColumn[];
+  missingOptionalColumns: RequiredCsvColumn[];
+  blankTicketIdRows: number;
+  duplicateTicketIdRows: number;
+  invalidTimestampRows: number;
+  invalidCoordsRows: number;
+  invalidStarRows: number;
+  missingCoordinateRows: number;
+  invalidStateRows: number;
+  blankOrgResponseRows: number;
+  sampledExistingTicketRows: number;
+  sampledNewTicketRows: number;
+  sampledChangedTicketRows: number;
+  dataQualitySignals: DataQualitySignals;
+  parseWarnings: string[];
+  canImport: boolean;
 };

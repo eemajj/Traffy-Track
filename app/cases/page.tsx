@@ -6,14 +6,14 @@ import { CaseListItem, CaseListView, getCaseListData, getCaseStatusTone } from "
 export const dynamic = "force-dynamic";
 
 type CasesPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     view?: string;
     q?: string;
     state?: string;
     dept?: string;
     page?: string;
     pageSize?: string;
-  };
+  }>;
 };
 
 const viewLabels: Record<CaseListView, string> = {
@@ -145,7 +145,8 @@ function CaseCard({ item }: { item: CaseListItem }) {
   );
 }
 
-export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
+export default async function CasesPage(props: CasesPageProps) {
+  const searchParams = (await props.searchParams) ?? {};
   const data = await getCaseListData(searchParams);
 
   return (
@@ -171,10 +172,11 @@ export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
                 <Link
                   key={view}
                   href={buildCasesHref({ view, q: data.q, state: data.state, dept: data.dept, pageSize: data.pageSize })}
+                  aria-current={view === data.view ? "page" : undefined}
                   className={
                     view === data.view
-                      ? "rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"
-                      : "rounded-2xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
+                      ? "inline-flex min-h-11 items-center rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+                      : "inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-ink hover:border-brand/35 hover:bg-white hover:text-brand"
                   }
                 >
                   {viewLabels[view]}
@@ -184,13 +186,17 @@ export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
 
             <form className="mt-5 grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_0.72fr_auto]" action="/cases">
               <input type="hidden" name="view" value={data.view} />
+              <label className="sr-only" htmlFor="cases-query">ค้นหาเรื่อง</label>
               <input
+                id="cases-query"
                 name="q"
                 defaultValue={data.q}
                 placeholder="ค้นหารหัสเรื่อง รายละเอียด ที่อยู่ หรือหน่วยงาน"
                 className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
               />
+              <label className="sr-only" htmlFor="cases-state">สถานะเรื่อง</label>
               <select
+                id="cases-state"
                 name="state"
                 defaultValue={data.state}
                 className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
@@ -202,7 +208,9 @@ export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
                   </option>
                 ))}
               </select>
+              <label className="sr-only" htmlFor="cases-department">ฝ่ายรับผิดชอบ</label>
               <select
+                id="cases-department"
                 name="dept"
                 defaultValue={data.dept}
                 className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
@@ -214,7 +222,9 @@ export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
                   </option>
                 ))}
               </select>
+              <label className="sr-only" htmlFor="cases-page-size">จำนวนรายการต่อหน้า</label>
               <select
+                id="cases-page-size"
                 name="pageSize"
                 defaultValue={data.pageSize}
                 className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
@@ -260,34 +270,46 @@ export default async function CasesPage({ searchParams = {} }: CasesPageProps) {
             )}
           </section>
 
-          <div className="flex items-center justify-between">
-            <Link
-              href={buildCasesHref({
-                view: data.view,
-                q: data.q,
-                state: data.state,
-                dept: data.dept,
-                pageSize: data.pageSize,
-                page: data.page > 1 ? data.page - 1 : 1
-              })}
-              className={data.page > 1 ? "rounded-2xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink hover:text-brand" : "pointer-events-none rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-muted opacity-60"}
-            >
-              ก่อนหน้า
-            </Link>
-            <p className="text-sm text-muted">หน้า {formatNumber(data.page)}</p>
-            <Link
-              href={buildCasesHref({
-                view: data.view,
-                q: data.q,
-                state: data.state,
-                dept: data.dept,
-                pageSize: data.pageSize,
-                page: data.page * data.pageSize < data.totalCount ? data.page + 1 : data.page
-              })}
-              className={data.page * data.pageSize < data.totalCount ? "rounded-2xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink hover:text-brand" : "pointer-events-none rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-muted opacity-60"}
-            >
-              ถัดไป
-            </Link>
+          <div className="flex items-center justify-between" aria-label="การแบ่งหน้าทะเบียนเรื่อง">
+            {data.page > 1 ? (
+              <Link
+                href={buildCasesHref({
+                  view: data.view,
+                  q: data.q,
+                  state: data.state,
+                  dept: data.dept,
+                  pageSize: data.pageSize,
+                  page: data.page - 1
+                })}
+                className="inline-flex min-h-11 items-center rounded-2xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink hover:text-brand"
+              >
+                ก่อนหน้า
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-muted opacity-60">
+                ก่อนหน้า
+              </span>
+            )}
+            <p className="text-sm text-muted" aria-live="polite">หน้า {formatNumber(data.page)}</p>
+            {data.page * data.pageSize < data.totalCount ? (
+              <Link
+                href={buildCasesHref({
+                  view: data.view,
+                  q: data.q,
+                  state: data.state,
+                  dept: data.dept,
+                  pageSize: data.pageSize,
+                  page: data.page + 1
+                })}
+                className="inline-flex min-h-11 items-center rounded-2xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink hover:text-brand"
+              >
+                ถัดไป
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="inline-flex min-h-11 items-center rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-muted opacity-60">
+                ถัดไป
+              </span>
+            )}
           </div>
         </div>
       )}

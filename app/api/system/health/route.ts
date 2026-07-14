@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/api-auth";
 import { getAdminOverview } from "@/lib/admin";
 import { env, hasSupabaseAdminEnv } from "@/lib/env";
+import { getOperationsHealth } from "@/lib/maintenance";
 import { createSupabaseAdminClient } from "@/lib/supabase";
-import { buildClosedStatesFilter } from "@/lib/tickets";
+import { buildPendingStatesOrFilter } from "@/lib/tickets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,8 @@ export async function GET() {
     appPasscode: Boolean(env.appPasscode),
     supabaseAdminEnv: hasSupabaseAdminEnv(),
     database: false,
-    storage: false
+    storage: false,
+    operations: false
   };
 
   if (!checks.supabaseAdminEnv) {
@@ -34,23 +36,27 @@ export async function GET() {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const closedFilter = buildClosedStatesFilter();
-    const [ticketCountResult, pendingCountResult, latestImportResult, bucketResult] = await Promise.all([
+    const pendingFilter = buildPendingStatesOrFilter();
+    const [ticketCountResult, pendingCountResult, latestImportResult, bucketResult, operations] = await Promise.all([
       supabase.from("tickets").select("ticket_id", { count: "exact", head: true }),
-      supabase.from("tickets").select("ticket_id", { count: "exact", head: true }).not("state", "in", closedFilter),
+      supabase.from("tickets").select("ticket_id", { count: "exact", head: true }).or(pendingFilter),
       supabase
         .from("import_batches")
         .select("id, imported_at, filename, total_rows, new_tickets, changed_tickets, unchanged_tickets")
         .order("imported_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.storage.getBucket("report-evidence")
+      supabase.storage.getBucket("report-evidence"),
+      getOperationsHealth(supabase)
     ]);
 
     checks.database = !ticketCountResult.error && !pendingCountResult.error && !latestImportResult.error;
     checks.storage = !bucketResult.error;
+    checks.operations = operations.outbox.dead === 0
+      && operations.outbox.staleLeases === 0
+      && operations.imports.staleActive === 0;
 
-    const status = checks.database && checks.storage ? "ok" : "degraded";
+    const status = checks.database && checks.storage && checks.operations ? "ok" : "degraded";
     const adminOverview = await getAdminOverview();
 
     return NextResponse.json(
@@ -62,6 +68,7 @@ export async function GET() {
           pending: pendingCountResult.count || 0
         },
         latestImport: latestImportResult.data || null,
+        operations,
         usage:
           adminOverview.status === "ready"
             ? {

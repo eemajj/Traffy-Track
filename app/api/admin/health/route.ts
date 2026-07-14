@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { requireApiSession } from "@/lib/api-auth";
+import { requireApiRole } from "@/lib/api-auth";
 import { getAdminOverview } from "@/lib/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiRole("admin");
   if (unauthorized) {
     return unauthorized;
   }
