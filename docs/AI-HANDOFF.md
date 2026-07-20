@@ -1,5 +1,7 @@
 # AI Handoff — CityData / Traffy Follow
 
+> **สถานะล่าสุดสำหรับ Gemini:** อ่าน [`docs/GEMINI-HANDOFF.md`](./GEMINI-HANDOFF.md) ก่อน เอกสารนี้เก็บ checkpoint ก่อน deployment วันที่ 2026-07-20 และมีข้อมูลบางส่วนล้าสมัย
+
 อัปเดตล่าสุด: 2026-07-20 (Asia/Bangkok)
 
 เอกสารนี้เป็นจุดเริ่มต้นสำหรับ AI หรือผู้พัฒนาคนถัดไป ให้เปิดไฟล์นี้ก่อน `docs/progress.md` แล้วตรวจสถานะจริงซ้ำก่อนแก้ไขหรือ deploy
