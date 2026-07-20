@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiRole } from "@/lib/api-auth";
+import { resolveApiServiceResult } from "@/lib/api-service-result";
 import { getAdminOverview } from "@/lib/admin";
 
 export const runtime = "nodejs";
@@ -13,16 +14,12 @@ export async function GET() {
   }
 
   const overview = await getAdminOverview();
-
-  if (overview.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+  const resolution = resolveApiServiceResult(overview, { unavailableMessage: "โหลดสถานะผู้ดูแลไม่สำเร็จ" });
+  if (!resolution.ok) {
+    return NextResponse.json(resolution.error.body, { status: resolution.error.status });
   }
 
-  if (overview.status === "unavailable") {
-    return NextResponse.json({ error: overview.message }, { status: 500 });
-  }
-
-  return NextResponse.json(overview, {
+  return NextResponse.json(resolution.value, {
     headers: {
       "Cache-Control": "no-store"
     }

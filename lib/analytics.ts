@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { unstable_cache } from "next/cache";
 
 import { ANALYTICS_PERIODS } from "@/lib/analytics-period";
 import type { AnalyticsPeriodDays } from "@/lib/analytics-period";
@@ -48,6 +48,13 @@ export type AnalyticsReadyData = {
     medianCloseHours: number | null;
     pendingNow: number;
     coordinateCoveragePercent: number;
+  };
+  comparison: {
+    previousPeriodDays: number;
+    createdCount: number;
+    closedCount: number;
+    createdChangePercent: number | null;
+    closedChangePercent: number | null;
   };
   trend: AnalyticsTrendPoint[];
   hotspots: AnalyticsHotspot[];
@@ -150,6 +157,19 @@ function normalizeAnalyticsPayload(payload: unknown, fallbackPeriod: AnalyticsPe
       pendingNow: toNumber(summary.pendingNow),
       coordinateCoveragePercent: toNumber(summary.coordinateCoveragePercent)
     },
+    comparison: isRecord(payload.comparison) ? {
+      previousPeriodDays: toNumber(payload.comparison.previousPeriodDays, periodDays),
+      createdCount: toNumber(payload.comparison.createdCount),
+      closedCount: toNumber(payload.comparison.closedCount),
+      createdChangePercent: toNullableNumber(payload.comparison.createdChangePercent),
+      closedChangePercent: toNullableNumber(payload.comparison.closedChangePercent)
+    } : {
+      previousPeriodDays: periodDays,
+      createdCount: 0,
+      closedCount: 0,
+      createdChangePercent: null,
+      closedChangePercent: null
+    },
     trend: toRecords(payload.trend).map((row) => ({
       bucketStart: toStringValue(row.bucketStart),
       createdCount: toNumber(row.createdCount),
@@ -169,31 +189,48 @@ function normalizeAnalyticsPayload(payload: unknown, fallbackPeriod: AnalyticsPe
   };
 }
 
-export async function getAnalyticsData(periodDays: AnalyticsPeriodDays): Promise<AnalyticsData> {
+async function loadAnalyticsData(periodDays: AnalyticsPeriodDays): Promise<AnalyticsData> {
   if (!hasSupabaseAdminEnv()) {
     return { status: "missing_env", periodDays };
   }
 
   try {
-    noStore();
-
     const supabase = createSupabaseAdminClient();
-    const [overviewResult, hotspotsResult] = await Promise.all([
+    const comparisonDays = Math.min(360, periodDays * 2);
+    const [overviewResult, hotspotsResult, comparisonResult] = await Promise.all([
       supabase.rpc("analytics_overview", { p_days: periodDays }),
       supabase.rpc("analytics_radius_hotspots", {
         p_days: periodDays,
         p_radius_m: 500,
         p_limit: 8
-      })
+      }),
+      supabase.rpc("analytics_overview", { p_days: comparisonDays })
     ]);
 
     if (overviewResult.error) {
       throw new Error(`โหลดข้อมูลวิเคราะห์ไม่สำเร็จ: ${overviewResult.error.message}`);
     }
     const overview = isRecord(overviewResult.data) ? overviewResult.data : {};
+    const currentSummary = isRecord(overview.summary) ? overview.summary : {};
+    const longerPayload = isRecord(comparisonResult.data) ? comparisonResult.data : {};
+    const longerSummary = isRecord(longerPayload.summary) ? longerPayload.summary : {};
+    const currentCreated = toNumber(currentSummary.createdCount);
+    const currentClosed = toNumber(currentSummary.closedCount);
+    const previousCreated = Math.max(0, toNumber(longerSummary.createdCount) - currentCreated);
+    const previousClosed = Math.max(0, toNumber(longerSummary.closedCount) - currentClosed);
+    const percentChange = (current: number, previous: number) => previous > 0
+      ? ((current - previous) / previous) * 100
+      : null;
     return normalizeAnalyticsPayload(
       {
         ...overview,
+        comparison: {
+          previousPeriodDays: periodDays,
+          createdCount: previousCreated,
+          closedCount: previousClosed,
+          createdChangePercent: percentChange(currentCreated, previousCreated),
+          closedChangePercent: percentChange(currentClosed, previousClosed)
+        },
         hotspots: hotspotsResult.error ? [] : hotspotsResult.data,
         hotspotsUnavailableMessage: hotspotsResult.error
           ? `โหลดกลุ่มพื้นที่ไม่สำเร็จ: ${hotspotsResult.error.message}`
@@ -208,4 +245,19 @@ export async function getAnalyticsData(periodDays: AnalyticsPeriodDays): Promise
       message: error instanceof Error ? error.message : "ข้อมูลวิเคราะห์ยังไม่พร้อมใช้งานชั่วคราว"
     };
   }
+}
+
+export const ANALYTICS_CACHE_TAG = "analytics-data";
+
+// The period argument is included in the cache key by unstable_cache. Analytics
+// is expensive but changes only after an import, so a one-minute burst cache
+// materially reduces repeated PostGIS and percentile calculations.
+const getCachedAnalyticsData = unstable_cache(
+  loadAnalyticsData,
+  [ANALYTICS_CACHE_TAG],
+  { revalidate: 60, tags: [ANALYTICS_CACHE_TAG] }
+);
+
+export async function getAnalyticsData(periodDays: AnalyticsPeriodDays): Promise<AnalyticsData> {
+  return getCachedAnalyticsData(periodDays);
 }

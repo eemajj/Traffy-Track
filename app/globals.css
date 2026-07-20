@@ -4,15 +4,19 @@
 
 .complaint-map-shell {
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 24px;
   background: var(--surface);
 }
 
 .complaint-map {
-  min-height: 34rem;
+  height: min(62vh, 32rem);
+  min-height: 26rem;
   width: 100%;
   z-index: 0;
+}
+
+.complaint-map-results {
+  height: min(70vh, 32rem);
+  min-height: 24rem;
 }
 
 .leaflet-container {
@@ -22,15 +26,62 @@
 
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip {
-  background: #ffffff;
+  background: var(--surface-elevated);
 }
 
 .leaflet-popup-content {
   margin: 14px 16px;
 }
 
-@media (max-width: 640px) {
+.leaflet-tooltip.complaint-map-selected-label {
+  background: var(--brand-deep);
+  border: 0;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-deep) 28%, transparent);
+  color: var(--surface-elevated);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 6px 9px;
+}
+
+.leaflet-tooltip-bottom.complaint-map-selected-label::before {
+  border-bottom-color: var(--brand-deep);
+}
+
+.complaint-map-result-selected {
+  background: color-mix(in srgb, var(--brand-deep) 8%, var(--surface-elevated));
+  box-shadow: inset 0 0 0 2px var(--brand-deep);
+}
+
+.complaint-map-cluster {
+  align-items: center;
+  background: var(--brand);
+  border: 3px solid var(--surface-elevated);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand) 24%, transparent);
+  color: var(--surface-elevated);
+  display: flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.complaint-map-cluster:focus {
+  outline: 3px solid rgba(0, 116, 75, 0.35);
+  outline-offset: 3px;
+}
+
+@media (min-width: 1024px) {
+  .complaint-map,
+  .complaint-map-results {
+    height: min(70vh, 46rem);
+    min-height: 38rem;
+  }
+}
+
+@media (max-width: 420px) {
   .complaint-map {
+    height: 28rem;
     min-height: 28rem;
   }
 }
@@ -50,6 +101,8 @@
   --danger: #b13a3a;
   --warning: #94550b;
   --success: #2f7d4e;
+  --chart-created: oklch(52% 0.19 255);
+  --chart-closed: oklch(49% 0.13 150);
   --ring: rgba(0, 116, 75, 0.20);
   --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -59,10 +112,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, rgba(99, 201, 162, 0.09), transparent 30%),
-    radial-gradient(circle at top right, rgba(0, 116, 75, 0.10), transparent 24%),
-    var(--bg);
+  background: var(--bg);
   color: var(--ink);
   font-family: "IBM Plex Sans Thai", "IBM Plex Sans", "Noto Sans Thai", system-ui, sans-serif;
   line-break: strict;
@@ -145,46 +195,16 @@ a:active {
   transform: translateY(1px) scale(0.985);
 }
 
-.motion-shell {
-  animation: shell-settle 420ms var(--ease-out-expo) both;
-}
-
-.motion-stack {
-  animation: content-settle 260ms var(--ease-out-quart) both;
-}
-
-.motion-card {
-  animation: card-settle 260ms var(--ease-out-quart) both;
-  animation-delay: calc(var(--motion-index, 0) * 34ms);
-  transform-origin: center top;
-}
-
-.motion-card:hover {
-  transform: translateY(-2px);
-}
-
 .app-header {
   isolation: isolate;
   position: relative;
-}
-
-.app-header::before {
-  background: radial-gradient(circle, rgba(99, 201, 162, 0.22), transparent 68%);
-  content: "";
-  height: 13rem;
-  pointer-events: none;
-  position: absolute;
-  right: -4rem;
-  top: -7rem;
-  width: 13rem;
-  z-index: -1;
 }
 
 .nav-pill {
   position: relative;
 }
 
-.nav-pill[aria-current="page"]::after {
+.nav-pill[data-layout="horizontal"][aria-current="page"]::after {
   animation: active-dot-settle 240ms var(--ease-out-quart) both;
   background: var(--brand);
   border-radius: 999px;
@@ -203,20 +223,6 @@ a:active {
   background-size: 220% 100%;
 }
 
-.motion-rail {
-  position: relative;
-  overflow: hidden;
-}
-
-.motion-rail::after {
-  animation: rail-sweep 2800ms var(--ease-out-expo) infinite;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.88), transparent);
-  content: "";
-  inset: 0;
-  position: absolute;
-  transform: translateX(-120%);
-}
-
 .motion-progress {
   overflow: hidden;
   position: relative;
@@ -224,22 +230,15 @@ a:active {
 
 .motion-progress::after {
   animation: progress-sheen 1200ms var(--ease-out-quart) infinite;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.34), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, white 34%, transparent), transparent);
   content: "";
   inset: 0;
   position: absolute;
   transform: translateX(-110%);
 }
 
-.motion-row {
-  transition:
-    background-color 180ms var(--ease-standard),
-    transform 180ms var(--ease-standard);
-}
-
-.motion-row:hover {
-  background-color: rgba(234, 244, 239, 0.72);
-  transform: translateX(2px);
+.motion-progress-indeterminate {
+  animation: import-progress-indeterminate 1400ms var(--ease-out-quart) infinite;
 }
 
 .motion-dropzone {
@@ -270,7 +269,7 @@ a:active {
 }
 
 .navigation-progress {
-  box-shadow: 0 0 18px rgba(0, 116, 75, 0.44);
+  box-shadow: 0 0 8px rgba(0, 116, 75, 0.32);
   transform-origin: left center;
 }
 
@@ -278,53 +277,18 @@ a:active {
   animation: navigation-progress-run 900ms var(--ease-out-expo) infinite;
 }
 
-@keyframes shell-settle {
-  from {
-    opacity: 0.96;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes content-settle {
-  from {
-    opacity: 0.97;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes card-settle {
-  from {
-    opacity: 0.96;
-    transform: translateY(6px) scale(0.995);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes rail-sweep {
-  0%,
-  45% {
-    transform: translateX(-120%);
-  }
-  70%,
-  100% {
-    transform: translateX(120%);
-  }
-}
-
 @keyframes progress-sheen {
   to {
     transform: translateX(110%);
+  }
+}
+
+@keyframes import-progress-indeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(250%);
   }
 }
 

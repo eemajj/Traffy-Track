@@ -23,6 +23,7 @@ const values = {
   APP_ENV: "staging",
   APP_PASSCODE: process.env.APP_PASSCODE,
   APP_SESSION_SECRET: process.env.APP_SESSION_SECRET,
+  APP_PASSCODE_PEPPER: process.env.APP_PASSCODE_PEPPER || process.env.APP_SESSION_SECRET,
   ...(process.env.CRON_SECRET ? { CRON_SECRET: process.env.CRON_SECRET } : {}),
   SUPABASE_ANON_KEY: anonKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceRole,

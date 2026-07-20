@@ -17,6 +17,44 @@ export type AuditEvent = {
   metadata: Record<string, unknown>;
 };
 
+export type LoginRateLimitResult = {
+  allowed: boolean;
+  retryAfterSeconds: number;
+};
+
+export async function consumeLoginRateLimit(input: {
+  identifierHash: string;
+  succeeded: boolean;
+}): Promise<LoginRateLimitResult> {
+  if (!hasSupabaseAdminEnv()) {
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase.rpc("consume_login_attempt", {
+      p_identifier_hash: input.identifierHash,
+      p_succeeded: input.succeeded
+    });
+
+    if (error) {
+      console.error("Login rate-limit check failed", { message: error.message });
+      return { allowed: false, retryAfterSeconds: 60 };
+    }
+
+    const result = data as { allowed?: unknown; retryAfterSeconds?: unknown } | null;
+    return {
+      allowed: result?.allowed === true,
+      retryAfterSeconds: Math.max(0, Number(result?.retryAfterSeconds) || 0)
+    };
+  } catch (error) {
+    console.error("Login rate-limit check failed", {
+      message: error instanceof Error ? error.message : "unknown error"
+    });
+    return { allowed: false, retryAfterSeconds: 60 };
+  }
+}
+
 export async function recordAuditEvent(input: {
   action: string;
   resourceType: string;
@@ -30,7 +68,7 @@ export async function recordAuditEvent(input: {
   }
 
   try {
-    const session = input.actorRole ? null : await getCurrentSessionClaims();
+    const session = input.actorRole === "system" ? null : await getCurrentSessionClaims();
     const supabase = createSupabaseAdminClient();
     const { error } = await supabase.from("audit_events").insert({
       actor_role: input.actorRole || session?.role || "system",
@@ -38,7 +76,15 @@ export async function recordAuditEvent(input: {
       resource_type: input.resourceType,
       resource_id: input.resourceId || null,
       outcome: input.outcome || "success",
-      metadata: input.metadata || {}
+      metadata: {
+        ...(input.metadata || {}),
+        ...(session?.identityId ? {
+          actorProfileId: session.identityId,
+          actorDisplayName: session.displayName,
+          actorPosition: session.position,
+          actorRoleLabel: session.roleLabel
+        } : {})
+      }
     });
 
     if (error) {

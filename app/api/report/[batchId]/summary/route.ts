@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/lib/api-auth";
+import { resolveApiServiceResult } from "@/lib/api-service-result";
 import { getReportBatchSummaryData } from "@/lib/report";
 
 export const runtime = "nodejs";
@@ -8,39 +9,32 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("reports:manage");
   if (unauthorized) {
     return unauthorized;
   }
 
   const summaryData = await getReportBatchSummaryData(params.batchId);
-
-  if (summaryData.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+  const resolution = resolveApiServiceResult(summaryData, { notFoundMessage: "ไม่พบรอบรายงานที่เลือก" });
+  if (!resolution.ok) {
+    return NextResponse.json(resolution.error.body, { status: resolution.error.status });
   }
-
-  if (summaryData.status === "unavailable") {
-    return NextResponse.json({ error: summaryData.message }, { status: 500 });
-  }
-
-  if (summaryData.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานที่เลือก" }, { status: 404 });
-  }
+  const summary = resolution.value;
 
   return NextResponse.json(
     {
-      batch: summaryData.batch,
-      departmentCount: summaryData.departmentCount,
-      itemCount: summaryData.itemCount,
-      evidenceUploadedCount: summaryData.evidenceUploadedCount,
-      evidencePendingCount: summaryData.evidencePendingCount,
-      evidenceMissingCount: summaryData.evidenceMissingCount,
-      evidencePendingReviewCount: summaryData.evidencePendingReviewCount,
-      evidenceRejectedCount: summaryData.evidenceRejectedCount,
-      evidenceApprovedCount: summaryData.evidenceApprovedCount,
-      evidenceProgressPercent: summaryData.evidenceProgressPercent,
-      uploadedDepartments: summaryData.uploadedDepartments,
-      pendingDepartments: summaryData.pendingDepartments
+      batch: summary.batch,
+      departmentCount: summary.departmentCount,
+      itemCount: summary.itemCount,
+      evidenceUploadedCount: summary.evidenceUploadedCount,
+      evidencePendingCount: summary.evidencePendingCount,
+      evidenceMissingCount: summary.evidenceMissingCount,
+      evidencePendingReviewCount: summary.evidencePendingReviewCount,
+      evidenceRejectedCount: summary.evidenceRejectedCount,
+      evidenceApprovedCount: summary.evidenceApprovedCount,
+      evidenceProgressPercent: summary.evidenceProgressPercent,
+      uploadedDepartments: summary.uploadedDepartments,
+      pendingDepartments: summary.pendingDepartments
     },
     {
       headers: {

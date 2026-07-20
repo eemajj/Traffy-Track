@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/lib/api-auth";
+import { resolveApiServiceResult } from "@/lib/api-service-result";
+import { recordAuditEvent } from "@/lib/audit";
 import { buildReportDepartmentPdfBuffer, buildReportDepartmentPdfFilename } from "@/lib/report-pdf";
 import { getReportDepartmentExportData } from "@/lib/report";
+import { buildReportExportFailureAudit, buildReportExportSuccessAudit } from "@/lib/report/export-audit";
 import {
   REPORT_EXPORT_BUCKET,
   REPORT_EXPORT_MAX_BYTES,
@@ -15,11 +18,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("reports:export");
   if (unauthorized) {
     return unauthorized;
   }
 
+  try {
   const { searchParams } = new URL(request.url);
   const dept = searchParams.get("dept");
 
@@ -28,21 +32,17 @@ export async function GET(request: Request, props: { params: Promise<{ batchId: 
   }
 
   const exportData = await getReportDepartmentExportData(params.batchId, dept);
-
-  if (exportData.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+  const resolution = resolveApiServiceResult(exportData, {
+    notFoundMessage: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก",
+    unavailableMessage: "โหลดข้อมูลสำหรับส่งออกรายงาน PDF ไม่สำเร็จ"
+  });
+  if (!resolution.ok) {
+    return NextResponse.json(resolution.error.body, { status: resolution.error.status });
   }
+  const readyExport = resolution.value;
 
-  if (exportData.status === "unavailable") {
-    return NextResponse.json({ error: exportData.message }, { status: 500 });
-  }
-
-  if (exportData.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
-  }
-
-  const buffer = await buildReportDepartmentPdfBuffer(exportData);
-  const filename = buildReportDepartmentPdfFilename(exportData);
+  const buffer = await buildReportDepartmentPdfBuffer(readyExport);
+  const filename = buildReportDepartmentPdfFilename(readyExport);
   const objectPath = `${params.batchId}/pdf/${Date.now()}-${sanitizeStorageSegment(filename) || "report.pdf"}`;
   const signedUrl = await uploadBufferAndCreateSignedDownload({
     bucket: REPORT_EXPORT_BUCKET,
@@ -53,5 +53,19 @@ export async function GET(request: Request, props: { params: Promise<{ batchId: 
     fileSizeLimit: REPORT_EXPORT_MAX_BYTES
   });
 
+  await recordAuditEvent(buildReportExportSuccessAudit({
+    batchId: params.batchId,
+    format: "pdf",
+    metadata: { department: dept, sizeBytes: buffer.length, objectPath }
+  }));
+
   return NextResponse.redirect(signedUrl);
+  } catch (error) {
+    await recordAuditEvent(buildReportExportFailureAudit({
+      batchId: params.batchId,
+      format: "pdf",
+      error
+    }));
+    return NextResponse.json({ error: "ส่งออกรายงาน PDF ไม่สำเร็จ" }, { status: 500 });
+  }
 }

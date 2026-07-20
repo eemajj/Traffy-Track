@@ -15,7 +15,7 @@ export default function AppError({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-bg px-4 py-10">
-      <section className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-panel sm:p-8" role="alert">
+      <section className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-panel sm:p-8" role="alert">
         <p className="text-sm font-semibold text-danger">โหลดข้อมูลไม่สำเร็จ</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-ink">ระบบตอบสนองช้าหรือขัดข้องชั่วคราว</h1>
         <p className="mt-3 max-w-prose text-sm leading-6 text-muted">

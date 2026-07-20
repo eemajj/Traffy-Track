@@ -1,7 +1,19 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { CaseListItem, CaseListView, getCaseListData, getCaseStatusTone } from "@/lib/cases";
+import { CaseListItem, getCaseListData } from "@/lib/cases";
+import {
+  buildCasesHref,
+  casePageSizeOptions as pageSizeOptions,
+  caseSortLabels as sortLabels,
+  caseViewLabels as viewLabels,
+  caseViews as views,
+  formatCaseDateTime as formatDateTime,
+  formatCaseDepartments as formatDeptList,
+  formatCaseNumber as formatNumber,
+  formatCaseOrgResponse as formatOrgResponse,
+  getCaseStatusClassName as getStatusClassName
+} from "@/lib/cases/page-model";
 
 export const dynamic = "force-dynamic";
 
@@ -11,84 +23,15 @@ type CasesPageProps = {
     q?: string;
     state?: string;
     dept?: string;
+    sort?: string;
     page?: string;
     pageSize?: string;
   }>;
 };
 
-const viewLabels: Record<CaseListView, string> = {
-  pending: "เรื่องคงค้าง",
-  reopened: "เปิดกลับรอบล่าสุด",
-  "status-changed": "เปลี่ยนสถานะรอบล่าสุด",
-  unassigned: "รอจัดฝ่าย",
-  closed: "ปิดแล้ว",
-  all: "ทั้งหมด"
-};
-
-const views: CaseListView[] = ["pending", "reopened", "status-changed", "unassigned", "closed", "all"];
-const pageSizeOptions = [10, 50, 100];
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("th-TH").format(value);
-}
-
-function formatOrgResponse(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .join(" / ");
-}
-
-function formatDeptList(value: string[]) {
-  return value.length > 0 ? value.join(" / ") : "ยังไม่มีฝ่าย";
-}
-
-function buildCasesHref(params: Record<string, string | number | null | undefined>) {
-  const search = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== null && value !== undefined && String(value).length > 0) {
-      search.set(key, String(value));
-    }
-  }
-
-  const query = search.toString();
-  return query ? `/cases?${query}` : "/cases";
-}
-
-function getStatusClassName(state: string | null) {
-  const tone = getCaseStatusTone(state);
-
-  if (tone === "success") {
-    return "bg-success/10 text-success";
-  }
-
-  if (tone === "warning") {
-    return "bg-warning/12 text-warning";
-  }
-
-  return "bg-surface text-muted";
-}
-
 function CaseCard({ item }: { item: CaseListItem }) {
   return (
-    <article className="rounded-3xl border border-border/80 bg-white p-5 shadow-panel">
+    <article className="rounded-2xl border border-border/80 bg-white p-5 shadow-panel">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -111,9 +54,15 @@ function CaseCard({ item }: { item: CaseListItem }) {
           <h2 className="mt-3 text-base font-semibold leading-6 text-ink">{item.comment || "ไม่มีรายละเอียดปัญหา"}</h2>
           <p className="mt-2 text-sm leading-6 text-muted">{item.address || "-"}{item.subdistrict ? `, ${item.subdistrict}` : ""}</p>
         </div>
-        <div className="shrink-0 rounded-2xl bg-surface px-4 py-3 text-sm text-muted lg:min-w-56">
-          <p>อัปเดตล่าสุด</p>
-          <p className="mt-1 font-semibold text-ink">{formatDateTime(item.last_activity)}</p>
+        <div className="shrink-0 space-y-3 rounded-2xl bg-surface px-4 py-3 text-sm text-muted lg:min-w-56">
+          <div>
+            <p>วันที่รับแจ้ง</p>
+            <p className="mt-1 font-semibold text-ink">{formatDateTime(item.timestamp)}</p>
+          </div>
+          <div className="border-t border-border pt-3">
+            <p>อัปเดตล่าสุด</p>
+            <p className="mt-1 font-semibold text-ink">{formatDateTime(item.last_activity)}</p>
+          </div>
         </div>
       </div>
 
@@ -155,23 +104,30 @@ export default async function CasesPage(props: CasesPageProps) {
       description="ค้นหาเรื่อง กรองตามฝ่ายหรือสถานะ และดูเรื่องที่เปลี่ยนสถานะจากรอบนำเข้าล่าสุด"
     >
       {data.status === "missing_env" ? (
-        <section className="rounded-3xl border border-warning/20 bg-warning/10 p-6">
+        <section className="rounded-2xl border border-warning/20 bg-warning/10 p-6">
           <h2 className="text-xl font-bold text-warning">Supabase ยังไม่ถูกตั้งค่า</h2>
           <p className="mt-3 text-sm leading-6 text-warning">ต้องตั้งค่า Supabase admin env ก่อนจึงจะดูทะเบียนเรื่องได้</p>
         </section>
       ) : data.status === "unavailable" ? (
-        <section className="rounded-3xl border border-danger/20 bg-danger/5 p-6">
+        <section className="rounded-2xl border border-danger/20 bg-danger/5 p-6">
           <h2 className="text-xl font-bold text-danger">ทะเบียนเรื่องดึงข้อมูลไม่ได้ชั่วคราว</h2>
           <p className="mt-3 text-sm leading-6 text-danger">{data.message}</p>
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="rounded-3xl bg-white p-5 shadow-panel">
+          <section className="rounded-2xl bg-white p-5 shadow-panel">
             <div className="flex flex-wrap gap-2">
               {views.map((view) => (
                 <Link
                   key={view}
-                  href={buildCasesHref({ view, q: data.q, state: data.state, dept: data.dept, pageSize: data.pageSize })}
+                  href={buildCasesHref({
+                    view,
+                    q: data.q,
+                    state: data.state,
+                    dept: data.dept,
+                    sort: data.sort,
+                    pageSize: data.pageSize
+                  })}
                   aria-current={view === data.view ? "page" : undefined}
                   className={
                     view === data.view
@@ -184,7 +140,7 @@ export default async function CasesPage(props: CasesPageProps) {
               ))}
             </div>
 
-            <form className="mt-5 grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_0.72fr_auto]" action="/cases">
+            <form className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_0.72fr_auto]" action="/cases">
               <input type="hidden" name="view" value={data.view} />
               <label className="sr-only" htmlFor="cases-query">ค้นหาเรื่อง</label>
               <input
@@ -222,6 +178,19 @@ export default async function CasesPage(props: CasesPageProps) {
                   </option>
                 ))}
               </select>
+              <label className="sr-only" htmlFor="cases-sort">เรียงลำดับ</label>
+              <select
+                id="cases-sort"
+                name="sort"
+                defaultValue={data.sort}
+                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
+              >
+                {Object.entries(sortLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
               <label className="sr-only" htmlFor="cases-page-size">จำนวนรายการต่อหน้า</label>
               <select
                 id="cases-page-size"
@@ -251,8 +220,9 @@ export default async function CasesPage(props: CasesPageProps) {
                       Math.min(data.page * data.pageSize, data.totalCount)
                     )}`
                   : ""}
+                {` · ${sortLabels[data.sort]}`}
               </p>
-              {(data.q || data.state || data.dept) ? (
+              {(data.q || data.state || data.dept || data.sort !== "updated-desc") ? (
                 <Link href={buildCasesHref({ view: data.view, pageSize: data.pageSize })} className="font-semibold text-brand hover:text-brand-deep">
                   ล้างตัวกรอง
                 </Link>
@@ -260,15 +230,57 @@ export default async function CasesPage(props: CasesPageProps) {
             </div>
           </section>
 
-          <section className="space-y-4">
-            {data.items.length === 0 ? (
-              <div className="rounded-3xl border border-border bg-white p-8 text-sm leading-6 text-muted shadow-panel">
-                ไม่พบเรื่องตามเงื่อนไขที่เลือก
-              </div>
-            ) : (
-              data.items.map((item) => <CaseCard key={item.ticket_id} item={item} />)
-            )}
-          </section>
+          {data.items.length === 0 ? (
+            <section className="rounded-2xl border border-border bg-white p-8 text-sm leading-6 text-muted">
+              ไม่พบเรื่องตามเงื่อนไขที่เลือก ลองล้างตัวกรองหรือเลือกมุมมองอื่น
+            </section>
+          ) : (
+            <>
+              <section className="hidden overflow-hidden rounded-2xl border border-border bg-white lg:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-sm">
+                    <thead className="bg-surface text-xs font-semibold text-muted">
+                      <tr>
+                        <th className="w-[15%] border-b border-border px-4 py-3">รหัส / สถานะ</th>
+                        <th className="w-[31%] border-b border-border px-4 py-3">รายละเอียดเรื่อง</th>
+                        <th className="w-[20%] border-b border-border px-4 py-3">ฝ่ายรับผิดชอบ</th>
+                        <th className="w-[17%] border-b border-border px-4 py-3">วันที่รับแจ้ง</th>
+                        <th className="w-[17%] border-b border-border px-4 py-3">อัปเดตล่าสุด</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/70">
+                      {data.items.map((item) => (
+                        <tr key={item.ticket_id} className="align-top hover:bg-surface/45">
+                          <td className="px-4 py-4">
+                            <Link href={`/cases/${encodeURIComponent(item.ticket_id)}`} className="font-mono text-xs font-semibold text-brand hover:text-brand-deep">
+                              {item.ticket_id}
+                            </Link>
+                            <span className={`mt-2 block w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
+                              {item.state || "ไม่ระบุสถานะ"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <Link href={`/cases/${encodeURIComponent(item.ticket_id)}`} className="line-clamp-2 font-semibold leading-5 text-ink hover:text-brand">
+                              {item.comment || "ไม่มีรายละเอียดปัญหา"}
+                            </Link>
+                            <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted">
+                              {item.address || "ไม่ระบุที่อยู่"}{item.subdistrict ? `, ${item.subdistrict}` : ""}
+                            </p>
+                          </td>
+                          <td className="px-4 py-4 leading-5 text-ink">{formatDeptList(item.dept_list)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-muted">{formatDateTime(item.timestamp)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap font-medium text-ink">{formatDateTime(item.last_activity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section className="space-y-3 lg:hidden">
+                {data.items.map((item) => <CaseCard key={item.ticket_id} item={item} />)}
+              </section>
+            </>
+          )}
 
           <div className="flex items-center justify-between" aria-label="การแบ่งหน้าทะเบียนเรื่อง">
             {data.page > 1 ? (
@@ -278,6 +290,7 @@ export default async function CasesPage(props: CasesPageProps) {
                   q: data.q,
                   state: data.state,
                   dept: data.dept,
+                  sort: data.sort,
                   pageSize: data.pageSize,
                   page: data.page - 1
                 })}
@@ -298,6 +311,7 @@ export default async function CasesPage(props: CasesPageProps) {
                   q: data.q,
                   state: data.state,
                   dept: data.dept,
+                  sort: data.sort,
                   pageSize: data.pageSize,
                   page: data.page + 1
                 })}

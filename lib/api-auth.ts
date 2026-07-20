@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 
-import { getCurrentSessionClaims, hasValidSessionCookie } from "@/lib/auth";
+import { hasPermission, type AppPermission } from "@/lib/access-permissions";
+import { getCurrentSessionClaims } from "@/lib/auth";
 import { SessionRole } from "@/lib/session";
 
-export async function requireApiSession() {
-  if (await hasValidSessionCookie()) {
-    return null;
+export async function requireApiSession(permission?: AppPermission) {
+  const claims = await getCurrentSessionClaims();
+  if (!claims) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (permission && !hasPermission(claims, permission)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return null;
 }
 
 export async function requireApiRole(role: SessionRole) {
@@ -22,5 +24,16 @@ export async function requireApiRole(role: SessionRole) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  return null;
+}
+
+export async function requireApiPermission(permission: AppPermission) {
+  const claims = await getCurrentSessionClaims();
+  if (!claims) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!hasPermission(claims, permission)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   return null;
 }

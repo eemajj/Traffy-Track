@@ -11,13 +11,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("admin:manage");
   if (unauthorized) {
     return unauthorized;
   }
 
   const checks = {
-    appPasscode: Boolean(env.appPasscode),
+    appPasscode: Boolean(env.appPasscode || (env.appPasscodePepper && hasSupabaseAdminEnv())),
     supabaseAdminEnv: hasSupabaseAdminEnv(),
     database: false,
     storage: false,

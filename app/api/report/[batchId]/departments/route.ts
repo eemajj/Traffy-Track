@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/lib/api-auth";
+import { resolveApiServiceResult } from "@/lib/api-service-result";
 import { getReportBatchDepartmentEvidenceStatuses } from "@/lib/report";
 
 export const runtime = "nodejs";
@@ -8,28 +9,20 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("reports:manage");
   if (unauthorized) {
     return unauthorized;
   }
 
   const statusData = await getReportBatchDepartmentEvidenceStatuses(params.batchId);
-
-  if (statusData.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
-  }
-
-  if (statusData.status === "unavailable") {
-    return NextResponse.json({ error: statusData.message }, { status: 500 });
-  }
-
-  if (statusData.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานที่เลือก" }, { status: 404 });
+  const resolution = resolveApiServiceResult(statusData, { notFoundMessage: "ไม่พบรอบรายงานที่เลือก" });
+  if (!resolution.ok) {
+    return NextResponse.json(resolution.error.body, { status: resolution.error.status });
   }
 
   return NextResponse.json(
     {
-      departments: statusData.departments
+      departments: resolution.value.departments
     },
     {
       headers: {

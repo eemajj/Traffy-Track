@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 
+import { hasPermission, type AppPermission } from "@/lib/access-permissions";
 import { env } from "@/lib/env";
-import { getSessionClaims, SessionRole, verifySessionCookieValue } from "@/lib/session";
+import { validatePasscodeProfileSession } from "@/lib/passcode-profiles";
+import { getSessionClaims, SessionRole } from "@/lib/session";
 
 const DEFAULT_AUTHENTICATED_PATH = "/dashboard";
 const SAFE_REDIRECT_ORIGIN = "https://app.invalid";
@@ -56,25 +58,42 @@ export function getSafeNextPath(value: unknown, fallback = DEFAULT_AUTHENTICATED
 
 export async function hasValidSessionCookie() {
   if (!env.appPasscode) {
-    return false;
+    // Database-backed Passcode profiles do not require the legacy APP_PASSCODE.
+    if (!env.supabaseServiceRoleKey) return false;
   }
 
-  const cookieStore = await cookies();
-  return verifySessionCookieValue(cookieStore.get(env.authCookieName)?.value);
+  return Boolean(await getCurrentSessionClaims());
 }
 
 export async function getCurrentSessionClaims() {
-  if (!env.appPasscode) {
-    return null;
-  }
-
   const cookieStore = await cookies();
-  return getSessionClaims(cookieStore.get(env.authCookieName)?.value);
+  const claims = await getSessionClaims(cookieStore.get(env.authCookieName)?.value);
+  if (!claims || !claims.identityId || claims.accessVersion === null) return claims;
+
+  const profile = await validatePasscodeProfileSession({
+    identityId: claims.identityId,
+    accessVersion: claims.accessVersion
+  });
+  if (!profile) return null;
+
+  return {
+    ...claims,
+    role: profile.isAdmin ? ("admin" as const) : ("operator" as const),
+    displayName: profile.displayName,
+    position: profile.position,
+    roleLabel: profile.roleLabel,
+    permissions: profile.permissions,
+    mustRotate: profile.mustRotate
+  };
 }
 
 export async function hasSessionRole(role: SessionRole) {
   const claims = await getCurrentSessionClaims();
   return claims?.role === role;
+}
+
+export async function hasSessionPermission(permission: AppPermission) {
+  return hasPermission(await getCurrentSessionClaims(), permission);
 }
 
 export function getLoginRedirectPath(nextPath?: string) {

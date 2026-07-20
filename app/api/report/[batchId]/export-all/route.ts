@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/lib/api-auth";
+import { resolveApiServiceResult } from "@/lib/api-service-result";
+import { recordAuditEvent } from "@/lib/audit";
 import { buildReportDepartmentExcelFilename, buildReportDepartmentWorkbookBuffer } from "@/lib/report-excel";
 import { getReportBatchDepartmentEvidenceStatuses, getReportDepartmentExportData } from "@/lib/report";
+import { buildReportExportFailureAudit, buildReportExportSuccessAudit } from "@/lib/report/export-audit";
 import {
   REPORT_EXPORT_BUCKET,
   REPORT_EXPORT_MAX_BYTES,
@@ -16,31 +19,28 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("reports:export");
   if (unauthorized) {
     return unauthorized;
   }
 
+  try {
   const departmentsData = await getReportBatchDepartmentEvidenceStatuses(params.batchId);
-
-  if (departmentsData.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+  const departmentsResolution = resolveApiServiceResult(departmentsData, {
+    notFoundMessage: "ไม่พบรอบรายงานที่เลือก",
+    unavailableMessage: "โหลดฝ่ายในรอบรายงานไม่สำเร็จ"
+  });
+  if (!departmentsResolution.ok) {
+    return NextResponse.json(departmentsResolution.error.body, { status: departmentsResolution.error.status });
   }
+  const readyDepartments = departmentsResolution.value;
 
-  if (departmentsData.status === "unavailable") {
-    return NextResponse.json({ error: departmentsData.message }, { status: 500 });
-  }
-
-  if (departmentsData.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานที่เลือก" }, { status: 404 });
-  }
-
-  if (departmentsData.departments.length === 0) {
+  if (readyDepartments.departments.length === 0) {
     return NextResponse.json({ error: "ไม่พบฝ่ายในรอบรายงานนี้" }, { status: 404 });
   }
 
   const exportEntries = await Promise.all(
-    departmentsData.departments.map(async (department) => {
+    readyDepartments.departments.map(async (department) => {
       const exportData = await getReportDepartmentExportData(params.batchId, department.dept_name);
 
       if (exportData.status !== "ready") {
@@ -59,17 +59,14 @@ export async function GET(_request: Request, props: { params: Promise<{ batchId:
   );
 
   const failedExport = exportEntries.find((result) => result.exportData.status !== "ready");
-
-  if (failedExport?.exportData.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
-  }
-
-  if (failedExport?.exportData.status === "unavailable") {
-    return NextResponse.json({ error: failedExport.exportData.message }, { status: 500 });
-  }
-
-  if (failedExport?.exportData.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
+  if (failedExport) {
+    const failedResolution = resolveApiServiceResult(failedExport.exportData, {
+      notFoundMessage: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก",
+      unavailableMessage: "โหลดข้อมูลสำหรับส่งออกรายงานรวมไม่สำเร็จ"
+    });
+    if (!failedResolution.ok) {
+      return NextResponse.json(failedResolution.error.body, { status: failedResolution.error.status });
+    }
   }
 
   const readyEntries: Array<{ filename: string; data: Buffer<ArrayBufferLike> }> = [];
@@ -94,5 +91,19 @@ export async function GET(_request: Request, props: { params: Promise<{ batchId:
     fileSizeLimit: REPORT_EXPORT_MAX_BYTES
   });
 
+  await recordAuditEvent(buildReportExportSuccessAudit({
+    batchId: params.batchId,
+    format: "zip",
+    metadata: { departmentCount: readyEntries.length, sizeBytes: zipBuffer.length, objectPath }
+  }));
+
   return NextResponse.redirect(signedUrl);
+  } catch (error) {
+    await recordAuditEvent(buildReportExportFailureAudit({
+      batchId: params.batchId,
+      format: "zip",
+      error
+    }));
+    return NextResponse.json({ error: "ส่งออกรายงานรวมไม่สำเร็จ" }, { status: 500 });
+  }
 }

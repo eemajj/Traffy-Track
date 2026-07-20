@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { ReportDepartmentChecklist } from "@/app/report/[batchId]/report-department-checklist";
+import { ReportLifecyclePanel } from "@/app/report/[batchId]/report-lifecycle-panel";
 import { getReportBatchDetailData } from "@/lib/report";
-import { BANGKOK_TIME_ZONE } from "@/lib/report-date";
+import { formatReportDate as formatDate, formatReportDateTime as formatDateTime } from "@/lib/report/page-model";
 import { getCurrentSessionClaims } from "@/lib/auth";
+import { getReportWorkflowHistory } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -15,31 +17,13 @@ type ReportBatchDetailPageProps = {
   }>;
 };
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeZone: BANGKOK_TIME_ZONE
-  }).format(new Date(value));
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: BANGKOK_TIME_ZONE
-  }).format(new Date(value));
-}
-
 export default async function ReportBatchDetailPage(props: ReportBatchDetailPageProps) {
   const params = await props.params;
   const [data, claims] = await Promise.all([
     getReportBatchDetailData(params.batchId),
     getCurrentSessionClaims()
   ]);
+  const workflowHistory = data.status === "ready" ? await getReportWorkflowHistory(params.batchId) : [];
 
   if (data.status === "not_found") {
     notFound();
@@ -58,14 +42,14 @@ export default async function ReportBatchDetailPage(props: ReportBatchDetailPage
       description="ตรวจรายการฝ่ายในรอบนี้ ดูรายการเรื่องของแต่ละฝ่าย ดาวน์โหลด Excel ต่อฝ่าย และอัปโหลดหลักฐานได้จากหน้าเดียวกัน"
     >
       {data.status === "missing_env" ? (
-        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
           <h2 className="text-xl font-bold text-amber-900">Supabase ยังไม่ถูกตั้งค่า</h2>
           <p className="mt-3 text-sm leading-6 text-amber-900/80">
             ต้องมี `SUPABASE_URL` และ `SUPABASE_SERVICE_ROLE_KEY` ใน `.env.local` ก่อนจึงจะเปิดรอบรายงานนี้ได้
           </p>
         </section>
       ) : data.status === "unavailable" ? (
-        <section className="rounded-3xl border border-warning/20 bg-[rgba(201,131,34,0.12)] p-6">
+        <section className="rounded-2xl border border-warning/20 bg-[rgba(201,131,34,0.12)] p-6">
           <h2 className="text-xl font-bold text-warning">รอบรายงานนี้ยังดึงข้อมูลไม่ได้ชั่วคราว</h2>
           <p className="mt-3 text-sm leading-6 text-warning">{data.message}</p>
         </section>
@@ -91,15 +75,15 @@ export default async function ReportBatchDetailPage(props: ReportBatchDetailPage
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
-            <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+            <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-panel">
               <p className="text-sm text-muted">วันที่ของรอบ</p>
               <p className="mt-2 text-2xl font-semibold text-ink">{formatDate(data.batch.report_date)}</p>
             </section>
-            <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+            <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-panel">
               <p className="text-sm text-muted">จำนวนฝ่าย</p>
               <p className="mt-2 text-2xl font-semibold text-ink">{data.departmentCount}</p>
             </section>
-            <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+            <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-panel">
               <p className="text-sm text-muted">รายการเรื่องในรอบ</p>
               <p className="mt-2 text-2xl font-semibold text-ink">{data.itemCount}</p>
             </section>
@@ -120,6 +104,16 @@ export default async function ReportBatchDetailPage(props: ReportBatchDetailPage
               <p className="mt-2 text-2xl font-semibold text-success">{data.evidenceApprovedCount}/{data.departmentCount}</p>
             </section>
           </div>
+
+          <ReportLifecyclePanel
+            batchId={params.batchId}
+            status={data.batch.lifecycle_status || "draft"}
+            owner={data.batch.owner || null}
+            dueDate={data.batch.due_date || null}
+            nextAction={data.batch.next_action || null}
+            role={claims?.role || "operator"}
+            history={workflowHistory}
+          />
 
           <ReportDepartmentChecklist
             key={departmentEvidenceKey}
@@ -148,7 +142,7 @@ export default async function ReportBatchDetailPage(props: ReportBatchDetailPage
             </div>
 
             {data.departments.map((department) => (
-              <section key={department.id} className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+              <section key={department.id} className="rounded-2xl border border-border/80 bg-white p-6 shadow-panel">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <h3 className="text-lg font-semibold tracking-[-0.01em] text-ink">{department.dept_name}</h3>

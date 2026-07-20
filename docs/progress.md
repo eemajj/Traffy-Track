@@ -1,5 +1,79 @@
 # Progress
 
+## AI Handoff — 2026-07-20
+
+- เอกสารส่งต่องานหลักอยู่ที่ `docs/AI-HANDOFF.md`
+- สถานะตอนทำ handoff: branch `main`, HEAD `891f922`, tracked changes 77 รายการ, untracked paths 106 รายการ
+- Production database migrated ถึง `20260719120000` แล้ว แต่ application ชุดปัจจุบันยังไม่ commit/deploy
+- Supabase CLI link ถูกคืนเป็น Staging `pyyoysdcedaskohiocdg`; `.env.local` ยังเป็น Production และ dev server ไม่ได้เปิดอยู่
+- AI ตัวถัดไปต้องอ่าน handoff ก่อนแก้ไข ห้าม `git add .`, reset, deploy หรือทำ Production mutation โดยไม่ตรวจ scope/target และไม่ได้รับคำสั่งชัดเจน
+
+## Deploy Blocker Remediation — 2026-07-19
+
+สถานะ: **FIXED / PRODUCTION DB MIGRATED / LOCAL RUNTIME VERIFIED / APPLICATION NOT DEPLOYED**
+
+- แก้ KPI Dashboard จากคำว่า “รับรองการแก้ไข” เป็น “เสร็จสิ้นที่ได้ 1–2 ดาว” และแยกชัดว่า 808 เป็น low-rating feedback ที่บังเอิญตรง `confirmed_case` ไม่ใช่ข้อมูลรับรอง
+- แก้ประวัติ Import รุ่นเก่าไม่ให้แสดง “ประมวลผล 0 เรื่อง” เมื่อไม่มีค่า legacy `processed_rows`; แสดงว่าไม่มีการบันทึกจำนวนแทน
+- เพิ่ม read-only Production Import V2 contract verifier และ release hygiene gate; ป้องกัน AppleDouble, local Supabase/cache, output, tmp และไฟล์สรุปเฉพาะกิจหลุดเข้า release
+- Production encrypted backup ผ่าน AES-256-GCM, SHA-256 และ ZIP signature: backup ID `5d9dacb1-2026-4c68-839a-3c327a9c471c`, 33,500 rows, Storage 3 objects
+- Apply Production migrations `20260715230000`–`20260719120000` ครบแล้ว; local/remote history ตรง, Pipeline V2 columns/stage tables/RPC 6 ตัวครบ และ active/stage queues เป็นศูนย์
+- Production DB contract ผ่าน: analytics 30/90/180 วัน, anonymous denial, import/outbox active/dead/stale เป็นศูนย์
+- Final gates ผ่าน: release hygiene, tests `135/135`, typecheck, lint, production build, `git diff --check` และ authenticated local HTTP smoke ทุก route หลัก
+- Semantic runtime smoke ผ่าน `/dashboard`, `/docs/dashboard-calculation`, `/import`; ล้าง stale `.next-dev` cache แล้ว dev server เปิดที่ `http://127.0.0.1:3000`
+- ยังไม่ได้ commit และยังไม่ได้ deploy application; ต้อง freeze/commit release scope ก่อน Vercel deploy
+
+## Traffy-compatible Dashboard + Formula Documentation — 2026-07-19
+
+สถานะ: **IMPLEMENTED / LOCAL RUNTIME VERIFIED / NOT DEPLOYED**
+
+- [x] แกะ data contract จาก Traffy Dashboard responses: total/status distribution, managed rollup, irrelevant+follow aggregate, by-this denominators, confirmed denominator และ weighted star average โดยไม่ตีความ star 1–2 เป็น confirmed
+- [x] เพิ่ม Dashboard ช่วงวันที่แบบ SSR ที่ใช้ `tickets.timestamp` ตาม `Asia/Bangkok` และช่วง half-open เดียวกับรายงานสรุป PDF
+- [x] แสดงยอด all-time จากฐานจริงตรง snapshot อ้างอิง: 14,191 เรื่อง, เสร็จสิ้น 11,566, ส่งต่อ 1,999, ไม่เกี่ยวข้อง 556, เรื่องเสร็จสิ้นที่ได้ 1–2 ดาว 808 และคะแนนเฉลี่ย 4.02/5 จาก 4,558 คะแนน
+- [x] เพิ่มสถานะ Traffy ครบ 12 กลุ่ม พร้อมเปอร์เซ็นต์ denominator เดียว, unknown-state reconciliation และ Top 10 ประเภทปัญหา
+- [x] เชื่อมปุ่มดาวน์โหลดรายงานสรุปให้ส่ง `from/to` ชุดเดียวกับ Dashboard ไป `/api/report/summary-pdf`
+- [x] คงส่วนปฏิบัติการเดิม (Action Center, import ล่าสุด, งานไม่มีฝ่าย, recent changes) ไว้ใต้สถิติ โดยแยก scope ชัดเจน
+- [x] เพิ่มหน้า `/docs/dashboard-calculation` และเอกสาร `docs/dashboard-calculation.md` ครอบคลุมสูตร หลักฐาน ข้อจำกัด และ data contract ที่ต้องเพิ่ม
+- [x] ไม่สร้างตัวเลข `*_by_this` หรือเวลาแก้ไขจาก proxy ที่พิสูจน์ไม่ได้; Dashboard ระบุ unavailable แทน 0
+- [x] เพิ่ม tests สำหรับ strict calendar date, Bangkok UTC bounds, status reconciliation และสูตร feedback 1–2 ดาวของเรื่องเสร็จสิ้น
+
+ผลตรวจ:
+
+- Automated tests `131/131`, typecheck, lint, production build และ `git diff --check` ผ่าน
+- Authenticated browser runtime ผ่าน `/dashboard` และ `/docs/dashboard-calculation`; ค่า all-time ตรง source snapshot, console ไม่มี error/warning
+- Responsive QA ที่ 390×844 ไม่มี horizontal overflow (`scrollWidth = innerWidth = 390`)
+- Dev server ยังเปิดที่ `http://127.0.0.1:3000`
+
+ข้อจำกัดที่ต้องรักษาใน UI/รายงาน:
+
+- ช่วงวันที่หมายถึง “เรื่องที่รับแจ้งในช่วง + สถานะล่าสุดตอนเรียกดู” ไม่ใช่สถานะย้อนหลัง ณ วันสิ้นสุด
+- CSV ไม่มี confirmed flag จึงยังแสดง `รับรองการแก้ไข` ไม่ได้; ค่า `state=เสร็จสิ้น AND star IN (1,2)` ที่ตรง 808 ต้องเรียกว่าเรื่องเสร็จสิ้นที่ได้ feedback 1–2 ดาวเท่านั้น
+- `จัดการเอง` 7,394/506, actor-at-close และช่วงเวลา 4–98 วันยังคำนวณใหม่ตามช่วงไม่ได้จนกว่าจะมี authoritative lifecycle event/actor data
+
+## Completion Sprint — 2026-07-15
+
+สถานะ: **DEPLOYED TO PRODUCTION / POST-DEPLOY VERIFIED**
+
+- [x] Durable import ใช้ฐานข้อมูลเป็น queue จริง: atomic claim, lease token, heartbeat, bounded retry/backoff, stale recovery และ exact-lease final apply; browser session เรียก consumer ได้ทันที และมี daily cron recovery ที่อยู่ในข้อจำกัด Vercel Hobby
+- [x] Backup ใช้ PostgreSQL single-statement MVCC snapshot ครอบคลุม workflow/audit history, checksum + artifact identity + retention metadata, optional AES-256-GCM และ restore ที่รักษา immutable history/identity IDs พร้อม sequence เดิม
+- [x] Login throttle แบบ atomic ที่ฐานข้อมูล (5 ครั้ง/15 นาที) และ audit ครอบคลุม login success/failure/rate-limit, report creation/export, evidence, backup/restore และ privileged failure
+- [x] Triage assignment พร้อม operator first assignment, admin manual override + reason, history, report creation gate และ role-based Action Center
+- [x] Report lifecycle Draft → Sent → Partially returned → Complete → Locked พร้อม owner, due date, next action, transition guard และ history
+- [x] Convenience features ครบ: import correction CSV, Admin operations/retry control, safe-withdraw 15-minute grace + exact-version Undo
+- [x] UI hardening: mobile navigation, preserved return context, accessible map/list, marker clustering, reduced card/shadow/motion และ Impeccable detector ไม่พบ issue
+- [x] Staging migrations `20260714160000`–`20260715131000` apply ครบ; runtime contract ผ่าน workflow/snapshot/rate-limit/durable lease/authorization และ cleanup ข้อมูล QA สำเร็จ
+- [x] Automated release gate: tests `66/66`, typecheck, lint, production build, `git diff --check` และ authenticated local runtime smoke ผ่าน
+- [x] Production coordinated rollout: fresh encrypted backup, queue gate, migrations, Vercel deploy และ post-deploy smoke ผ่านครบเมื่อ 2026-07-15
+
+Production rollout 2026-07-15:
+
+- Deployment `dpl_4dKVFrthhZNPk5u61KGzviXnrqR5` สถานะ Ready, alias `https://traffy-track.vercel.app`, Functions region `hnd1`
+- Production migrations ตรง local ถึง `20260715131000`; Analytics/RPC authorization ผ่าน และ outbox/import active/dead/stale เป็น 0
+- Pre-migration encrypted backup: 11,810,678 bytes, 33,175 rows, Storage 3 objects; AES-GCM/SHA-256/ZIP integrity ผ่าน
+- Post-migration consistent snapshot backup ID `588164a1-6795-4e00-8562-fba1000d9c5d`: 12,269,057 bytes, 33,203 rows, Storage 3 objects; server/client checksum, AES-GCM และ ZIP integrity ผ่าน
+- Post-deploy: health `200 ok`, Dashboard/Cases/Map/Report/Analytics/Import/Admin render ถูกต้อง, Action Center API ทำงาน, operations guard ถูกต้อง และ unauthenticated cron/workflow ถูกปฏิเสธ `401`
+
+ขอบเขตที่ตั้งใจไม่ขยายใน sprint นี้: ระบบยังใช้ shared admin/operator passcodes จึงยังไม่เพิ่ม per-user identity/MFA/department capability; งานนี้เป็น conditional architecture item เมื่อมี requirement ผู้ใช้หลายคน ไม่ใช่ release blocker ของ auth model ปัจจุบัน
+
 ## Urgent Remediation Plan — 2026-07-14
 
 เป้าหมายเร่งด่วนคือยกระดับระบบจาก operational MVP ให้มี data correctness, transactional integrity และ workflow ที่ตรวจสอบย้อนหลังได้ โดยแบ่งเป็นก้อนที่ deploy และ rollback แยกกันได้
@@ -18,19 +92,19 @@
 - [x] เพิ่ม outbox/reconciler สำหรับลบ Storage เพื่อไม่ให้ DB กับไฟล์แยกสถานะกัน
 
 ### Phase 2 — Reliability, Security & Recovery
-- [ ] เปลี่ยน background import จาก `waitUntil` เป็น durable worker/cron consumer พร้อม lease, heartbeat, retry และ stale-job recovery
-- [ ] เปลี่ยน backup เป็น consistent snapshot/streaming artifact พร้อม encryption, checksum, retention และ audit
-- [ ] เพิ่ม per-user identity, login rate limit/MFA และ capability/department scope หากขยายผู้ใช้หลายคน
-- [ ] ขยาย audit log ให้ครอบคลุม login, report, evidence, export, restore และ privileged failure
-- [ ] เพิ่ม integration/E2E tests สำหรับ API authorization, RLS, concurrent import, report transaction และ restore integrity
+- [x] เปลี่ยน background import จาก `waitUntil` เป็น durable worker/consumer พร้อม lease, heartbeat, retry และ stale-job recovery
+- [x] เปลี่ยน backup เป็น consistent snapshot artifact พร้อม optional encryption, checksum, retention metadata และ audit
+- [x] เพิ่ม atomic login rate limit; per-user identity/MFA/capability scope ถูกระบุเป็น conditional เมื่อขยายจาก shared-role passcodes
+- [x] ขยาย audit log ให้ครอบคลุม login, report, evidence, export, restore และ privileged failure
+- [x] เพิ่ม automated + Staging integration tests สำหรับ API authorization, RLS/RPC denial, concurrent import lease, report transaction และ restore contract
 
 ### Phase 3 — Workflow & UX Hardening
-- [ ] ทำ assignment/triage queue สำหรับเคสรอจัดฝ่าย พร้อม accept/reject suggestion, local override, owner และ next action
-- [ ] เพิ่ม report lifecycle: Draft → Sent → Partially returned → Complete → Locked พร้อม due date และ follow-up history
-- [ ] ปรับ Dashboard ให้นำด้วยงานที่ต้องทำต่อ ไม่ใช่ metric cards อย่างเดียว
+- [x] ทำ assignment/triage queue สำหรับเคสรอจัดฝ่าย พร้อม first assignment, manual override, history และ report gate
+- [x] เพิ่ม report lifecycle: Draft → Sent → Partially returned → Complete → Locked พร้อม owner, due date, next action และ follow-up history
+- [x] ปรับ Dashboard ให้นำด้วย Role-based Action Center ก่อน metric cards
 - [x] แก้ WCAG: warning contrast, form labels, live-region/error focus, table captions และ touch targets
-- [ ] ปรับ mobile navigation, accessible map/list, marker clustering และ preserve filter/return context
-- [ ] ลด card/shadow/motion ที่ไม่สื่อ interaction แล้วรัน `$impeccable audit` ซ้ำ
+- [x] ปรับ mobile navigation, accessible map/list, marker clustering และ preserve filter/return context
+- [x] ลด card/shadow/motion ที่ไม่สื่อ interaction และรัน Impeccable audit/detector ซ้ำ
 
 ### QA Release Gate — 2026-07-14
 
@@ -43,7 +117,7 @@
 - [x] P1 (Staging): ปิด/revoke legacy review/withdraw RPC เพื่อให้ exact-version และ reject/withdraw reason 5–1,000 ตัวอักษรเป็น invariant ที่ bypass ไม่ได้; Production รอ coordinated rollout
 - [x] P1: เพิ่ม HTTP integration tests สำหรับ auth `401/403`, malformed UUID `400`, stale UUID `409`, auto-approve และ idempotent retry
 - [x] P1: อัปเดต Next.js เป็น `16.2.10` และแก้ PostCSS/UUID dependency chain; `npm audit` เหลือ 0 vulnerabilities และ production build ผ่าน
-- [ ] P1: เพิ่ม durable import recovery, outbox dead-letter/visibility และ cron/queue heartbeat ใน health check — recovery/dead-letter/metrics/heartbeat เสร็จแล้ว เหลือ durable consumer ที่รับประกัน execution แทน `waitUntil`
+- [x] P1: เพิ่ม durable import recovery, outbox dead-letter/visibility, cron/queue heartbeat และ durable consumer ที่ไม่พึ่ง `waitUntil`
 - [x] P1 UI/A11y: warning contrast, skip link, labels, live-region/error recovery, disabled pagination และ touch targets
 
 ผล QA baseline:
@@ -68,7 +142,7 @@
 - [x] Apply migrations `20260714158000` และ forward-fix `20260714159000` บน Staging แล้ว
 - [x] Staging runtime QA ผ่าน 30/90/180 วัน: ได้ 8 hotspots, ผล deterministic, วงไม่ซ้อน, counts reconcile และ anonymous ถูก deny
 - [x] Automated tests `39/39`, typecheck, lint, production build, `git diff --check` และ HTTP smoke `/analytics` → focused `/map` ผ่าน
-- [ ] Production ยังไม่ apply migrations/deploy ชุด Analytics นี้ รอ coordinated rollout รอบถัดไป
+- [x] Production Analytics rollout ปิดงานแล้วใน release ก่อนหน้า; รายการนี้เป็นสถานะค้างในเอกสารเดิม
 
 ### Convenience Features — P0 Delivery
 - [x] เปลี่ยนความครบของรายงานเป็น approved-only และแยก Missing / Pending review / Rejected / Approved ใน list, detail, summary และ archive รุ่นใหม่
@@ -76,12 +150,12 @@
 - [x] บังคับเหตุผลเมื่อตีกลับ แสดงเหตุผลให้เจ้าหน้าที่เห็น และเก็บ note ตรงทั้ง version projection และ status event
 - [x] ป้องกัน delayed upload completion ของไฟล์เก่าดึง current evidence pointer ย้อนจากเวอร์ชันใหม่
 - [x] เพิ่มทางเลือก Admin “อัปโหลดและอนุมัติทันที” โดยยังเก็บ upload/approve audit แยกกัน และ fallback เป็นรอตรวจหาก auto-approve ไม่สำเร็จ
-- [ ] ทำ Triage assignment พร้อม manual override และ report creation gate
-- [ ] ทำ Role-based Action Center สำหรับงานวันนี้
-- [ ] เพิ่ม report lifecycle, owner, due date และ next action
-- [ ] เพิ่ม import correction artifact ที่ดาวน์โหลดได้
-- [ ] เพิ่ม Admin queue control, retry/dead-letter และ maintenance heartbeat
-- [ ] เพิ่ม Safe withdraw พร้อม grace period และ Undo
+- [x] ทำ Triage assignment พร้อม manual override และ report creation gate
+- [x] ทำ Role-based Action Center สำหรับงานวันนี้
+- [x] เพิ่ม report lifecycle, owner, due date และ next action
+- [x] เพิ่ม import correction artifact ที่ดาวน์โหลดได้
+- [x] เพิ่ม Admin queue control, retry/dead-letter และ maintenance heartbeat
+- [x] เพิ่ม Safe withdraw พร้อม grace period และ Undo
 
 ### Delivery Rule
 - Phase 0 ต้องผ่าน tests, typecheck, lint, build และ Staging import regression ก่อนเริ่ม Phase 1
@@ -319,6 +393,144 @@
 - Worktree ปัจจุบันมี role-aware signed session, optional `APP_ADMIN_PASSCODE`, admin route/API guard, audit event helper, audit migration และ Audit log UI ที่ผ่าน checks/runtime QA
 - Compatibility rule: ถ้ายังไม่ตั้ง `APP_ADMIN_PASSCODE`, `APP_PASSCODE` เดิมต้องยัง login เป็น admin ได้ เพื่อไม่ล็อกผู้ใช้เดิมออกจากระบบ
 - ณ จุดพักยังไม่มี dev server เปิดค้างที่ port 3000
+
+## Pause Checkpoint — 2026-07-18 (Refactor รอบที่ 1)
+- เริ่ม refactor แบบรักษา behavior โดยไม่ย้าย `lib/report.ts` ทั้งก้อน เพราะไฟล์เป้าหมายมีงาน workflow/evidence ที่ยังไม่ commit อยู่
+- เพิ่ม `lib/report/evidence-file.ts` แยก UUID validation, upload limits, MIME allowlist และการตรวจ file signature + SHA-256 ออกจาก `lib/report.ts`
+- เพิ่ม `lib/report/evidence-validation.ts` แยก validation ของ review/withdrawal ออกจาก evidence API route และให้ route ใช้ผล validation เดียวกัน
+- `lib/report.ts` ยังเป็น compatibility entrypoint และ re-export `isEvidenceVersionId` เหมือนเดิม จึงยังไม่ต้องเปลี่ยน consumer imports
+- เพิ่ม `lib/import/client-model.ts` แยก types, formatter, labels, status classes และ preview-warning rules ออกจาก `app/import/import-client.tsx`
+- เพิ่ม characterization tests `tests/report-evidence.test.mjs` และ `tests/import-client-model.test.mjs` รวม 8 cases ใหม่
+- เพิ่ม `lib/report/evidence-response.ts` แยก HTTP status/message/code mapping ของ evidence service ออกจาก API route โดยคง response contract เดิม
+- เปลี่ยน evidence mapper เป็น typed resolver แบบ `ok/error` เพื่อรักษา discriminated-union narrowing และ fail closed เมื่อ service ส่งสถานะที่ไม่รู้จัก
+- เพิ่ม `lib/api-service-result.ts` เป็น shared resolver สำหรับ contract `ready/missing_env/not_found/unavailable` และนำไปใช้กับ evidence, report summary/departments/export และ admin health/wipe รวม 7 route groups
+- ลด `app/api/report/[batchId]/evidence/route.ts` จาก 386 เหลือประมาณ 320 บรรทัด โดย success payload อ่านผ่าน typed resolution เท่านั้น
+- เพิ่ม characterization tests สำหรับ evidence และ shared API contract; `npm test` รวมเป็น 89/89
+- เพิ่ม `lib/report/evidence-mutation-core.ts` เป็น service orchestration แบบ dependency injection และ `evidence-mutation-service.ts` เป็น Supabase runtime adapter
+- ย้าย review/withdraw/undo ออกจาก `lib/report.ts` โดยคง compatibility re-export เดิม; `lib/report.ts` ลดจาก 1,762 เหลือ 1,559 บรรทัด
+- เพิ่ม service-level characterization tests ครอบคลุม exact-version input, PT409/PT400, idempotency, undo deadline, projection reload และ missing environment; `npm test` รวมเป็น 93/93
+- เพิ่ม `lib/report/types.ts` แยก public result contracts และ internal database row models ออกจาก implementation พร้อม compatibility type re-export เดิม
+- หลังแยก types/models `lib/report.ts` ลดต่อจาก 1,559 เหลือ 1,281 บรรทัด โดยไม่เปลี่ยน runtime query behavior
+- เพิ่ม `lib/report/evidence-transfer-core.ts` แยก deterministic policy ของ object path ownership, upload intent expiry 15 นาที และ signed-download filename ออกจาก Supabase/Storage orchestration
+- เพิ่ม characterization tests สำหรับ batch/department path scoping, intent metadata/expiry และ filename sanitization; `npm test` รวมเป็น 96/96
+- เพิ่ม `evidence-transfer-orchestrator.ts` แบบ dependency injection และ `evidence-transfer-service.ts` เป็น Supabase/Storage runtime adapter
+- ย้าย create-upload/attach/download ออกจาก `lib/report.ts` พร้อม compatibility re-export; ครอบคลุม signature inspection, exact department ownership, attach reconciliation และ signed URL 10 นาที
+- เพิ่ม adapter-level tests 4 cases และปรับ static invariant test ให้ตาม module ใหม่; `npm test` รวมเป็น 100/100
+- หลังย้าย transfer adapter `lib/report.ts` ลดจาก 1,294 เหลือ 938 บรรทัด
+- เพิ่ม `lib/report/batch-command-core.ts` แยก date/idempotency policy และ transactional command input ออกจาก Supabase runtime
+- เพิ่ม `lib/report/batch-command-service.ts` เป็น runtime adapter และย้าย create/update/delete batch ออกจาก `lib/report.ts` โดยคง compatibility re-export เดิม
+- เพิ่ม characterization tests 4 cases ครอบคลุม create transaction input, idempotency/date policy, update missing/unavailable และ delete แบบ fail closed; `npm test` รวมเป็น 104/104
+- หลังย้าย batch commands `lib/report.ts` ลดจาก 938 เหลือ 850 บรรทัด
+- เพิ่ม `lib/report/query-core.ts` แยก filter/sort/date normalization, pagination, immutable snapshot fallback และ archive payload policy ออกจาก Supabase runtime
+- เพิ่ม `lib/report/archive-service.ts` และ `lib/report/query-service.ts` เป็น owner ของ archive command และ report read models ทั้งหมด
+- เพิ่ม characterization tests 4 cases ครอบคลุม fail-closed filters, pagination/error context, snapshot precedence และ approved-v1 archive semantics; `npm test` รวมเป็น 108/108
+- `lib/report.ts` ลดจาก 850 เหลือ 35 บรรทัดและทำหน้าที่เป็น compatibility facade เท่านั้น โดย consumer imports เดิมไม่ต้องเปลี่ยน
+- เพิ่ม `lib/report/export-audit.ts` เป็น shared success/failure envelope ของ XLSX, PDF และ ZIP exports พร้อม fail-closed unknown error message
+- ย้าย `export-all` จาก manual `missing_env/not_found/unavailable` branches ไปใช้ `resolveApiServiceResult`; common service status mapping ใน API routes ไม่เหลือแบบ manual แล้ว
+- ปรับ static security invariant ให้ตรวจทั้ง route-to-builder wiring และ action/outcome contract ที่ owner ใหม่ พร้อม characterization tests 2 cases; `npm test` รวมเป็น 110/110
+- Quality gates ที่ผ่านแล้ว: `npm run typecheck`, `npm run lint`, `npm test` 110/110 และ `npm run build`; build รอบยืนยันผ่านนอก sandbox หลัง Turbopack ถูก sandbox ปฏิเสธการ bind local port
+- ยังไม่ได้ deploy และยังไม่ได้ commit refactor รอบนี้
+- ขั้นถัดไป: รวม audit success/failure envelope ของ privileged admin actions ที่ยังซ้ำกัน แล้วจึงเริ่มแยก import pipeline
+
+## Full-system Refactor Completion — 2026-07-18
+
+- ปิด behavior-preserving refactor ครบทั้ง API contracts, Report, Import, page/view-model boundaries, Admin/Cases/Map และ backup/restore scripts โดยคง compatibility facades ที่ public imports เดิม
+- `lib/report.ts` เหลือ 35 บรรทัด; `lib/import/process.ts` เหลือ orchestration/compatibility entrypoint 177 บรรทัด; `app/import/import-client.tsx` เหลือ view composition 111 บรรทัดและย้าย controller/preview/progress/result/history ออกเป็น focused modules
+- แยก report overview/list-filter/archive และ department checklist, แยก analytics sections ออกจาก route data boundary และรวม formatter/label/status logicไว้ใน tested page models ของ Report, Analytics, Admin, Cases และ Map
+- แยก public service boundaries ของ Admin overview/backup/wipe และ Cases list/detail พร้อม runtime owner ภายใน domain; map marker/list synchronization ใช้ pure ordered selection model ที่มี regression test
+- แยก backup transport, restore plan และ artifact verification path; privileged admin actions ใช้ success/failure audit envelope กลาง
+- Automated gates รอบสุดท้ายผ่าน: tests `119/119`, typecheck, lint, clean Next.js production build และ `git diff --check`
+- Authenticated local runtime smoke ผ่าน Dashboard/Cases/detail/Report lifecycle/Import/Map/Admin, operator denial, health และ unauthenticated redirect โดยไม่มี mutation หรือ deploy
+- Staging project `pyyoysdcedaskohiocdg` พร้อมใช้งาน (active import/outbox/dead = 0); release regression ผ่าน workflow, consistent backup, passcode versioning, restore denial, atomic throttle, durable lease/heartbeat, evidence undo, anonymous denial และ cleanup QA
+- งานรอบนี้ยัง **ไม่ได้ commit และไม่ได้ deploy**; deployment ต้องแยก rollback boundary ราย domain ตามกติกาด้านล่าง
+
+## Pause Checkpoint — 2026-07-18 (Import large-file regression)
+
+- หยุด dev server แล้วตามคำสั่งผู้ใช้ เพื่อหยุด browser polling และไม่ให้ `/api/import/consume` เรียก retry เพิ่ม
+- ไฟล์ `citydata เขตทวีวัฒนา 2026-07-18 20-14-27.csv` ถูกต้อง: 21 MB, 15 columns, 14,179 records และ full-file Papa Parse ไม่มี error
+- แก้ local preview false-positive แล้ว: `lib/import/preview-core.ts` ตัด partial 512 KB ที่จบ CSV record จริง รองรับ quoted multiline/escaped quote; sample จากไฟล์จริงได้ 357 complete records, 15 fields, 0 errors
+- เพิ่ม `tests/import-preview-core.test.mjs`; quality gates หลังแก้ preview ผ่าน tests `121/121`, typecheck, lint และ `git diff --check`
+- Import job ที่ตรวจคือ `41913a04-925d-4602-ad18-e67d01a72d5f`; audit ยืนยัน transaction ล้มซ้ำด้วย `canceling statement due to statement timeout` และระบบ retry ทำให้ UI ค้างที่ 94%
+- ค่า 94% เป็น client-side simulated progress ไม่ใช่จำนวน record จริง; งานถัดไปต้องเปลี่ยนเป็น queued/running/retrying state จาก job จริง พร้อม attempt/error ล่าสุดและ indeterminate progress ระหว่าง server processing
+- ยังไม่ได้แก้/apply database timeout migration และยังไม่ได้ deploy; ก่อนทำต่อให้ตรวจสถานะล่าสุดของ job จาก Supabase เพราะ browser ได้เรียก retry หลายรอบก่อนหยุด server
+
+## Import Large-file Remediation — 2026-07-19
+
+- ตรวจ Production job `41913a04-925d-4602-ad18-e67d01a72d5f` แล้ว: จบเป็น `failed`, attempts `5/5`, ไม่มี lease ค้าง และไม่ retry งานเดิม; source CSV ยังอยู่ใน temporary Storage ขนาด 21,520,558 bytes
+- Production audit ยืนยันสาเหตุเดิม `canceling statement due to statement timeout`; attempts หลังหัก backoff ใช้เวลารวมประมาณ 69–74 วินาที จึงชนทั้ง DB timeout และเสี่ยงเกิน Vercel Function 60 วินาที
+- หน้า Import ไม่ใช้ simulated progress ที่ค้าง 94% แล้ว: แสดง queued/running/retrying จาก job จริง, attempt/max attempts, next retry และ error จากครั้งก่อน พร้อม indeterminate progress ระหว่าง server processing
+- `/api/import/consume` kick ทำแบบไม่บล็อก status polling และกัน consumer request ซ้อน; reload หน้าแล้ว resume งาน queued/running อัตโนมัติ และ status fetch ทน transient failure 5 ครั้งก่อนหยุดติดตาม
+- ปิด file picker/drop ระหว่าง operation เพื่อไม่ให้ async result ของไฟล์ A ไปจับกับ filename/path ของไฟล์ B; drag state กลับมาใช้ Civic Emerald token และเพิ่ม live-region สำหรับ retry detail
+- `lib/import/process.ts` เปลี่ยน ticket lookup 29 chunks จาก serial เป็น bounded concurrency 4 chunks/รอบ พร้อม heartbeat ต่อกลุ่ม เพื่อลด round-trip โดยไม่ยิง Supabase พร้อมกันแบบไม่จำกัด
+- Read-only profile ด้วยไฟล์จริง 14,179 rows และ ticket fields ชุดเต็ม: download 1.35s, parse 0.19s, bounded lookup 5.38s, read phase รวม 6.92s; ไม่ mutate Production หรือ Staging tickets
+- เพิ่ม migration `20260719090000_import_large_file_timeout.sql`: กำหนด `apply_claimed_import_batch` statement timeout 45s และรักษา error ของ attempt ก่อนหน้าระหว่าง queued/running; successful apply ยัง clear error ตามเดิม
+- ยืนยัน linked target เป็น Staging `pyyoysdcedaskohiocdg`, active import queue = 0 แล้ว apply migration สำเร็จ; local/remote migration history ตรงถึง `20260719090000`
+- Staging contract QA ผ่านและ cleanup แล้ว: preserve prior error on claim, increment attempt, atomic apply complete, clear error on success และ anonymous trigger execution denial
+- Supabase DB lint ไม่พบ issue ใหม่ใน import migration; output ที่เหลือเป็น PostGIS extension false-positive/legacy warnings และ retired assignment function warnings ที่มีอยู่เดิม
+- Final local gates ผ่าน: tests `124/124`, typecheck, lint, production build, Impeccable detector `[]` และ `git diff --check`
+- งานนี้ยัง **ไม่ได้ commit, ไม่ได้ deploy application และไม่ได้ apply migration ไป Production**; ห้าม retry failed job เดิมเพราะ source path เดิมผูก unique batch ไว้แล้ว
+- ขั้นถัดไป: แยก rollback boundary/commit ของ import remediation จาก refactor domain อื่น แล้ว deploy Preview ที่ชี้ Staging เพื่อทดสอบไฟล์ 21 MB end-to-end พร้อม timing ก่อน Production backup + coordinated migration/application rollout
+
+### Actual Staging E2E — 2026-07-19 (FAILED / CLEANED UP)
+
+- รันผ่าน browser UI จริงบน local app ที่ชี้ Staging `pyyoysdcedaskohiocdg` ด้วยไฟล์ Production จริง 21,520,558 bytes / 14,179 rows; ใช้ passcode ทดสอบชั่วคราวและไม่ได้แตะ Production job/migration
+- upload target สำเร็จ, upload สำเร็จ และ `/api/import/preview` ตอบ 200 ใน 8.1s; preview อ่าน 512 KB / 300 rows, จับคู่ครบ 15 columns และไม่พบ parse error สำคัญ
+- UI behavior ที่แก้ผ่านการทดสอบ: แสดง queued → processing → retrying จาก job จริง, indeterminate progress, attempt `1/5`, next retry และ prior error โดยไม่กลับไปค้าง simulated 94%; file picker ถูก disable ระหว่าง operation
+- Full import job `f0cdd7cb-5d51-4bba-b73d-f135e46a7375` **ไม่สำเร็จ**: attempt แรก `/api/import/consume` ใช้ประมาณ 80s แล้ว 500; status read เคยค้าง/500 สูงสุดประมาณ 41s ระหว่าง DB pressure ก่อน job เสีย lease และกลับ queued
+- attempt ที่สองถูก claim แต่ heartbeat หยุดที่ `2026-07-19T08:17:21.981628Z`, lease หมด `08:19:21.981628Z` และยังค้าง running; ทั้งสอง attempt มี `total_rows=0`, `processed_rows=0` จึงยืนยันว่า atomic apply ไม่ commit tickets/history บางส่วน
+- ปิด browser และ dev server เพื่อหยุด polling/consumer ก่อนครบ retry; ลบเฉพาะ QA batch และ Storage object `incoming/1784448793720-35398db2-3cc3-46c7-af50-bf924c1021b1-citydata-thawi-2026-07-18.csv` จาก Staging แล้ว และตรวจ cleanup ผ่าน
+- ข้อสรุปใหม่: bounded read lookup ช่วยลด read-only phase แต่ยังไม่พอสำหรับ payload เต็ม + atomic JSONB apply บน Supabase/Vercel budget; **ห้าม deploy/apply Production** จาก remediation ปัจจุบัน
+- งานถัดไปต้องเปลี่ยน durable import architecture: upload normalized ticket/history rows เข้า batch-scoped staging tables แบบ chunked โดยยังไม่แตะ `tickets`, แล้วใช้ RPC transaction สั้นเพื่อ validate lease + merge staging rows + finalize batch แบบ atomic; ต้อง cleanup staging rows เมื่อ failed/expired และพิสูจน์ไฟล์ 14,179 rows จริงผ่านภายใน Vercel 60s ก่อน Production
+
+### Import Pipeline V2 — 2026-07-19 (STAGING PASSED / CLEANED UP)
+
+- เพิ่ม migration `20260719120000_import_staged_pipeline_v2.sql`: V2 queue แยกจาก legacy claim ด้วย `pipeline_version=2` และ `source_storage_path_v2`; old worker ไม่เห็น V2 เพราะ legacy `storage_path` เป็น `null`
+- เพิ่ม typed batch-scoped tables `import_ticket_stage` และ `import_history_stage` พร้อม RLS/service-role-only access และ RPC ที่ตรวจ exact live lease ทุก mutation: claim, reset, chunk stage, planned continuation, atomic finalize และ terminal release
+- phase staging ใช้ parsing/dedupe/diff semantics เดิมใน TypeScript แล้วเขียนเฉพาะ new/changed ticket + history เป็น chunks 750/1,500; ระหว่างนี้ไม่แตะ canonical `tickets`/`ticket_history`
+- planned continuation เปลี่ยน batch เป็น `queued/finalizing`, clear lease และคืน attempt ที่ใช้เพื่อแบ่ง phase จึงไม่กิน retry budget; UI/API ส่ง `processingPhase` และแสดง “กำลังเตรียมข้อมูล” / “กำลังบันทึกขั้นสุดท้าย” ตามสถานะจริง
+- finalizer ตรวจ stage counts ซ้ำจาก summary ที่ persist แล้ว ก่อน set-based upsert/history insert; ticket merge, history, completed status และ stage cleanup อยู่ใน transaction เดียว พร้อม statement timeout 45s
+- terminal V2 release ล้าง staging rows ทันที; maintenance recovery แยก V1 inline จาก V2 durable job ไม่ปิด V2 ผิดเพราะ legacy `storage_path is null`
+- apply migration เฉพาะ Staging project `pyyoysdcedaskohiocdg` ผ่าน SQL Editor หลังตรวจ active queue = 0 และ syntax แบบ rollback; บันทึก migration history ถึง `20260719120000`; **ยังไม่ได้ apply Production**
+- E2E จริงผ่าน local app ที่ชี้ Staging ด้วย CSV 21,281,431 bytes / 13,975 parsed records (ใช้ ticket-id namespace สั้นเฉพาะ QA เพื่อ cleanup ได้): enqueue V2 → stage 22.64s → atomic finalize 7.13s; ทั้งสอง invocation ต่ำกว่า Vercel 60s
+- E2E assertions ผ่าน: canonical tickets = 0 ก่อน finalize, attempt ยัง 0 หลัง planned continuation, completed summary 13,975 rows, stage tables = 0 หลัง finalize และ source Storage ถูกลบเมื่อ terminal
+- failure-injection ผ่าน: ลบ staged ticket หลัง continuation แล้ว finalizer ปฏิเสธด้วย count mismatch, canonical ticket/history ยังคง 0, terminal release เปลี่ยน failed และล้าง ticket/history stage ทันที
+- harness `scripts/check-import-pipeline-v2-staging.mjs` ลบ QA history/tickets/stage/batch/storage ใน `finally` และยืนยันไม่เหลือ QA ticket/batch; local Staging credential file ถูกลบและ dev server ถูกปิดหลังทดสอบ
+- final local gates หลัง E2E ผ่าน: tests `127/127`, typecheck, lint, production build, script syntax check และ `git diff --check`
+- งานนี้ยัง **ไม่ได้ commit, ไม่ได้ deploy application และไม่ได้ apply migration ไป Production**; coordinated rollout ต้อง apply migration ก่อน deploy app เพราะ worker ใหม่เรียก V2 RPC ก่อน แล้วจึงค่อยทดสอบ Preview ที่ชี้ Staging อีกครั้งก่อน Production backup/release
+
+## Full-system Refactor Roadmap — 2026-07-18
+
+สถานะ: **IMPLEMENTATION COMPLETE / LOCAL + STAGING VERIFIED / NOT DEPLOYED**
+
+1. **API contract & route boundaries** — กำลังดำเนินการ
+   - [x] typed shared resolver และ fail-closed unknown status
+   - [x] evidence-specific validation/file/response modules
+   - [x] ย้าย common service-status error mapping ที่เหลือเข้า shared/domain resolver โดยคงข้อความและ status code เดิม
+   - [x] รวม audit success/failure envelope ของ report exports
+   - [x] รวม audit success/failure envelope ของ privileged admin actions ที่ซ้ำกัน
+2. **Report domain decomposition** — เสร็จแล้ว
+   - [x] แยก report types/models ออกจาก `lib/report.ts`
+   - [x] แยก evidence review/withdraw/undo service พร้อม compatibility re-export
+   - [x] แยก evidence upload/attach/download deterministic transfer policy
+   - [x] แยก evidence Supabase/Storage adapter พร้อม compatibility re-export
+   - [x] แยก batch command service พร้อม deterministic core และ compatibility re-export
+   - [x] แยก archive/query core และ Supabase services พร้อม compatibility re-export
+   - [x] เพิ่ม service-level characterization tests ก่อนย้าย evidence mutation orchestration
+3. **Import pipeline**
+   - [x] แยก queue/storage orchestration, CSV processing และ transactional apply ใน `lib/import/process.ts`
+   - [x] แยก state/actions/preview/result views ออกจาก `app/import/import-client.tsx`
+4. **Page and component boundaries**
+   - [x] แยก report list/filter/archive sections, department checklist และ analytics sections เป็น focused components
+   - [x] ย้าย formatter/label/status logic ที่ยังฝังใน JSX ไปเป็น tested view models
+5. **Admin, cases, map and operational scripts**
+   - [x] แยก admin overview/backup/wipe services และ page panels
+   - [x] แยก case list/detail queries และ view models
+   - [x] ลด coupling ของ map component และแยก marker/list synchronization tests
+   - [x] แยก backup/restore scripts เป็น transport, validation และ restore-plan modules
+6. **Release safety**
+   - [x] ทุกก้อนต้องผ่าน tests, typecheck, lint, build และ diff check
+   - [x] รัน authenticated local runtime smoke เมื่อแตะ route/UI behavior
+   - [x] Staging regression ก่อน deploy; ห้ามรวม refactor หลาย domain ใน deployment เดียวโดยไม่มี rollback boundary
 
 ## Open Questions
 - ยังไม่มี open question เชิง business เพิ่มจาก requirement ล่าสุด

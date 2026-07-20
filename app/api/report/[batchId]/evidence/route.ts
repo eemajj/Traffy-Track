@@ -4,12 +4,18 @@ import { requireApiRole, requireApiSession } from "@/lib/api-auth";
 import { getCurrentSessionClaims } from "@/lib/auth";
 import { recordAuditEvent } from "@/lib/audit";
 import {
+  validateEvidenceReviewInput,
+  validateEvidenceWithdrawalInput
+} from "@/lib/report/evidence-validation";
+import { resolveEvidenceServiceResult } from "@/lib/report/evidence-response";
+import {
   attachReportDepartmentEvidence,
   createReportDepartmentEvidenceUpload,
   deleteReportDepartmentEvidence,
   getReportDepartmentEvidenceDownloadData,
   isEvidenceVersionId,
-  reviewReportDepartmentEvidence
+  reviewReportDepartmentEvidence,
+  undoReportDepartmentEvidenceWithdrawal
 } from "@/lib/report";
 
 export const runtime = "nodejs";
@@ -17,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("reports:evidence");
   if (unauthorized) {
     return unauthorized;
   }
@@ -30,21 +36,9 @@ export async function GET(request: Request, props: { params: Promise<{ batchId: 
   }
 
   const downloadData = await getReportDepartmentEvidenceDownloadData(params.batchId, dept);
-
-  if (downloadData.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
-  }
-
-  if (downloadData.status === "unavailable") {
-    return NextResponse.json({ error: downloadData.message }, { status: 500 });
-  }
-
-  if (downloadData.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
-  }
-
-  if (downloadData.status === "no_file") {
-    return NextResponse.json({ error: "ฝ่ายนี้ยังไม่มีไฟล์หลักฐาน" }, { status: 404 });
+  const downloadResolution = resolveEvidenceServiceResult("download", downloadData);
+  if (!downloadResolution.ok) {
+    return NextResponse.json(downloadResolution.error.body, { status: downloadResolution.error.status });
   }
 
   await recordAuditEvent({
@@ -54,18 +48,18 @@ export async function GET(request: Request, props: { params: Promise<{ batchId: 
     metadata: { department: dept }
   });
 
-  return NextResponse.redirect(downloadData.signedUrl);
+  return NextResponse.redirect(downloadResolution.value.signedUrl);
 }
 
 export async function POST(request: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("reports:evidence");
   if (unauthorized) {
     return unauthorized;
   }
 
   const payload = (await request.json().catch(() => null)) as {
-    action?: "create-upload" | "complete-upload" | "review";
+    action?: "create-upload" | "complete-upload" | "review" | "undo-withdrawal";
     dept?: string;
     filename?: string;
     contentType?: string;
@@ -85,6 +79,33 @@ export async function POST(request: Request, props: { params: Promise<{ batchId:
     return NextResponse.json({ error: "ไม่พบชื่อฝ่ายสำหรับอัปโหลดหลักฐาน" }, { status: 400 });
   }
 
+  if (payload.action === "undo-withdrawal") {
+    const forbidden = await requireApiRole("admin");
+    if (forbidden) return forbidden;
+    const evidenceVersionId = String(payload.evidenceVersionId || "").trim();
+    if (!isEvidenceVersionId(evidenceVersionId)) {
+      return NextResponse.json({ error: "รหัสเวอร์ชันหลักฐานไม่ถูกต้อง" }, { status: 400 });
+    }
+    const result = await undoReportDepartmentEvidenceWithdrawal({
+      batchId: params.batchId,
+      deptName: dept,
+      evidenceVersionId
+    });
+    const undoResolution = resolveEvidenceServiceResult("undo-withdrawal", result);
+    if (!undoResolution.ok) {
+      return NextResponse.json(undoResolution.error.body, { status: undoResolution.error.status });
+    }
+    const readyResult = undoResolution.value;
+    await recordAuditEvent({
+      action: "evidence.withdrawal_undone",
+      resourceType: "report_batch_department",
+      resourceId: readyResult.department.id,
+      actorRole: "admin",
+      metadata: { department: dept, evidenceVersionId }
+    });
+    return NextResponse.json({ ok: true, department: readyResult.department });
+  }
+
   if (payload.action === "create-upload") {
     const uploadResult = await createReportDepartmentEvidenceUpload({
       batchId: params.batchId,
@@ -93,34 +114,22 @@ export async function POST(request: Request, props: { params: Promise<{ batchId:
       contentType: String(payload.contentType || ""),
       size: Number(payload.size || 0)
     });
-
-    if (uploadResult.status === "missing_env") {
-      return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+    const uploadResolution = resolveEvidenceServiceResult("create-upload", uploadResult);
+    if (!uploadResolution.ok) {
+      return NextResponse.json(uploadResolution.error.body, { status: uploadResolution.error.status });
     }
-
-    if (uploadResult.status === "invalid_file") {
-      return NextResponse.json({ error: uploadResult.message }, { status: 400 });
-    }
-
-    if (uploadResult.status === "not_found") {
-      return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
-    }
-
-    if (uploadResult.status === "unavailable") {
-      return NextResponse.json({ error: uploadResult.message }, { status: 500 });
-    }
-
+    const readyUpload = uploadResolution.value;
 
     await recordAuditEvent({
       action: "evidence.upload_requested",
       resourceType: "report_batch_department",
-      resourceId: uploadResult.department.id,
+      resourceId: readyUpload.department.id,
       metadata: { department: dept, filename: String(payload.filename || ""), size: Number(payload.size || 0) }
     });
 
     return NextResponse.json({
       ok: true,
-      upload: uploadResult.upload
+      upload: readyUpload.upload
     });
   }
 
@@ -140,46 +149,34 @@ export async function POST(request: Request, props: { params: Promise<{ batchId:
       objectPath: String(payload.path || ""),
       actorRole: claims.role
     });
-
-    if (attachResult.status === "missing_env") {
-      return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+    const attachResolution = resolveEvidenceServiceResult("complete-upload", attachResult);
+    if (!attachResolution.ok) {
+      return NextResponse.json(attachResolution.error.body, { status: attachResolution.error.status });
     }
-
-    if (attachResult.status === "invalid_file") {
-      return NextResponse.json({ error: attachResult.message }, { status: 400 });
-    }
-
-    if (attachResult.status === "not_found") {
-      return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
-    }
-
-    if (attachResult.status === "unavailable") {
-      return NextResponse.json({ error: attachResult.message }, { status: 500 });
-    }
-
+    const readyAttach = attachResolution.value;
 
     await recordAuditEvent({
-      action: attachResult.idempotent ? "evidence.upload_completion_retried" : "evidence.upload_completed",
+      action: readyAttach.idempotent ? "evidence.upload_completion_retried" : "evidence.upload_completed",
       resourceType: "report_batch_department",
-      resourceId: attachResult.department.id,
+      resourceId: readyAttach.department.id,
       actorRole: claims.role,
       metadata: {
         department: dept,
-        version: attachResult.department.evidence_version_number,
-        checksumPrefix: attachResult.department.evidence_sha256?.slice(0, 12) || null,
-        evidenceVersionId: attachResult.evidenceVersionId,
-        idempotent: attachResult.idempotent,
-        isCurrentVersion: attachResult.isCurrentVersion
+        version: readyAttach.department.evidence_version_number,
+        checksumPrefix: readyAttach.department.evidence_sha256?.slice(0, 12) || null,
+        evidenceVersionId: readyAttach.evidenceVersionId,
+        idempotent: readyAttach.idempotent,
+        isCurrentVersion: readyAttach.isCurrentVersion
       }
     });
 
-    let department = attachResult.department;
+    let department = readyAttach.department;
     let approvalWarning: string | null = null;
     let didAutoApprove = false;
 
     if (autoApprove) {
-      const evidenceVersionId = attachResult.evidenceVersionId;
-      if (!attachResult.isCurrentVersion || department.current_evidence_version_id !== evidenceVersionId) {
+      const evidenceVersionId = readyAttach.evidenceVersionId;
+      if (!readyAttach.isCurrentVersion || department.current_evidence_version_id !== evidenceVersionId) {
         approvalWarning = "อัปโหลดสำเร็จ แต่มีหลักฐานเวอร์ชันใหม่กว่าแล้ว ระบบจึงไม่อนุมัติไฟล์เก่าอัตโนมัติ";
       } else {
         const reviewResult = await reviewReportDepartmentEvidence({
@@ -240,61 +237,37 @@ export async function POST(request: Request, props: { params: Promise<{ batchId:
     const forbidden = await requireApiRole("admin");
     if (forbidden) return forbidden;
 
-    if (payload.decision !== "approved" && payload.decision !== "rejected") {
-      return NextResponse.json({ error: "ผลการตรวจหลักฐานไม่ถูกต้อง" }, { status: 400 });
+    const validation = validateEvidenceReviewInput(payload);
+    if ("error" in validation) {
+      return NextResponse.json(validation, { status: 400 });
     }
-    const evidenceVersionId = String(payload.evidenceVersionId || "").trim();
-    const note = String(payload.note || "").trim();
-    if (!evidenceVersionId) {
-      return NextResponse.json({ error: "ไม่พบเวอร์ชันหลักฐานที่ต้องการตรวจ", code: "evidence_version_required" }, { status: 400 });
-    }
-    if (!isEvidenceVersionId(evidenceVersionId)) {
-      return NextResponse.json({ error: "รหัสเวอร์ชันหลักฐานไม่ถูกต้อง", code: "invalid_evidence_version_id" }, { status: 400 });
-    }
-    if (payload.decision === "rejected" && note.length < 5) {
-      return NextResponse.json({ error: "กรุณาระบุเหตุผลที่ตีกลับอย่างน้อย 5 ตัวอักษร", code: "rejection_reason_required" }, { status: 400 });
-    }
-    if (note.length > 1000) {
-      return NextResponse.json({ error: "เหตุผลหรือหมายเหตุต้องไม่เกิน 1,000 ตัวอักษร", code: "review_note_too_long" }, { status: 400 });
-    }
+    const { decision, evidenceVersionId, note } = validation.value;
 
     const reviewResult = await reviewReportDepartmentEvidence({
       batchId: params.batchId,
       deptName: dept,
       evidenceVersionId,
-      decision: payload.decision,
+      decision,
       note: note || null,
       actorRole: "admin"
     });
-
-    if (reviewResult.status === "missing_env") {
-      return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+    const reviewResolution = resolveEvidenceServiceResult("review", reviewResult);
+    if (!reviewResolution.ok) {
+      return NextResponse.json(reviewResolution.error.body, { status: reviewResolution.error.status });
     }
-    if (reviewResult.status === "not_found") {
-      return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
-    }
-    if (reviewResult.status === "invalid") {
-      return NextResponse.json({ error: reviewResult.message, code: "invalid_evidence_review" }, { status: 400 });
-    }
-    if (reviewResult.status === "conflict") {
-      return NextResponse.json({ error: reviewResult.message, code: "stale_evidence_version" }, { status: 409 });
-    }
-    if (reviewResult.status === "unavailable") {
-      return NextResponse.json({ error: reviewResult.message }, { status: 500 });
-    }
-
+    const readyReview = reviewResolution.value;
 
     await recordAuditEvent({
-      action: reviewResult.idempotent
+      action: readyReview.idempotent
         ? "evidence.review_retried"
-        : payload.decision === "approved" ? "evidence.approved" : "evidence.rejected",
+        : decision === "approved" ? "evidence.approved" : "evidence.rejected",
       resourceType: "report_batch_department",
-      resourceId: reviewResult.department.id,
+      resourceId: readyReview.department.id,
       actorRole: "admin",
-      metadata: { department: dept, evidenceVersionId, note: note || null, idempotent: reviewResult.idempotent }
+      metadata: { department: dept, evidenceVersionId, note: note || null, idempotent: readyReview.idempotent }
     });
 
-    return NextResponse.json({ ok: true, department: reviewResult.department });
+    return NextResponse.json({ ok: true, department: readyReview.department });
   }
 
   return NextResponse.json({ error: "ไม่พบขั้นตอนการอัปโหลดหลักฐาน" }, { status: 400 });
@@ -310,22 +283,12 @@ export async function DELETE(request: Request, props: { params: Promise<{ batchI
     evidenceVersionId?: string;
     reason?: string;
   } | null;
-  const dept = String(payload?.dept || "").trim();
-  const evidenceVersionId = String(payload?.evidenceVersionId || "").trim();
-  const reason = String(payload?.reason || "").trim();
-
-  if (!dept) {
-    return NextResponse.json({ error: "ไม่พบชื่อฝ่ายที่ต้องการถอนหลักฐาน" }, { status: 400 });
+  const validation = validateEvidenceWithdrawalInput(payload || {});
+  if ("error" in validation) {
+    const { error, code } = validation;
+    return NextResponse.json(code === "department_required" ? { error } : { error, code }, { status: 400 });
   }
-  if (!isEvidenceVersionId(evidenceVersionId)) {
-    return NextResponse.json({ error: "รหัสเวอร์ชันหลักฐานไม่ถูกต้อง", code: "invalid_evidence_version_id" }, { status: 400 });
-  }
-  if (reason.length < 5) {
-    return NextResponse.json({ error: "กรุณาระบุเหตุผลที่ถอนหลักฐานอย่างน้อย 5 ตัวอักษร", code: "withdrawal_reason_required" }, { status: 400 });
-  }
-  if (reason.length > 1000) {
-    return NextResponse.json({ error: "เหตุผลที่ถอนหลักฐานต้องไม่เกิน 1,000 ตัวอักษร", code: "withdrawal_reason_too_long" }, { status: 400 });
-  }
+  const { dept, evidenceVersionId, reason } = validation.value;
 
   const deleteResult = await deleteReportDepartmentEvidence(
     params.batchId,
@@ -334,42 +297,24 @@ export async function DELETE(request: Request, props: { params: Promise<{ batchI
     reason,
     "admin"
   );
-
-  if (deleteResult.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+  const withdrawalResolution = resolveEvidenceServiceResult("withdrawal", deleteResult);
+  if (!withdrawalResolution.ok) {
+    return NextResponse.json(withdrawalResolution.error.body, { status: withdrawalResolution.error.status });
   }
-
-  if (deleteResult.status === "not_found") {
-    return NextResponse.json({ error: "ไม่พบรอบรายงานหรือฝ่ายที่เลือก" }, { status: 404 });
-  }
-
-  if (deleteResult.status === "no_file") {
-    return NextResponse.json({ error: "ฝ่ายนี้ยังไม่มีไฟล์หลักฐาน" }, { status: 404 });
-  }
-
-  if (deleteResult.status === "invalid") {
-    return NextResponse.json({ error: deleteResult.message, code: "invalid_evidence_withdrawal" }, { status: 400 });
-  }
-
-  if (deleteResult.status === "conflict") {
-    return NextResponse.json({ error: deleteResult.message, code: "stale_evidence_version" }, { status: 409 });
-  }
-
-  if (deleteResult.status === "unavailable") {
-    return NextResponse.json({ error: deleteResult.message }, { status: 500 });
-  }
-
+  const readyWithdrawal = withdrawalResolution.value;
 
   await recordAuditEvent({
-    action: deleteResult.idempotent ? "evidence.withdrawal_retried" : "evidence.withdrawn",
+    action: readyWithdrawal.idempotent ? "evidence.withdrawal_retried" : "evidence.withdrawn",
     resourceType: "report_batch_department",
-    resourceId: deleteResult.department.id,
+    resourceId: readyWithdrawal.department.id,
     actorRole: "admin",
-    metadata: { department: dept, evidenceVersionId, reason, idempotent: deleteResult.idempotent }
+    metadata: { department: dept, evidenceVersionId, reason, idempotent: readyWithdrawal.idempotent }
   });
 
   return NextResponse.json({
     ok: true,
-    department: deleteResult.department
+    department: readyWithdrawal.department,
+    evidenceVersionId: readyWithdrawal.evidenceVersionId,
+    undoUntil: readyWithdrawal.undoUntil
   });
 }

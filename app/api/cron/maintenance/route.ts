@@ -8,6 +8,7 @@ import {
   reconcileStorageDeletionOutbox
 } from "@/lib/maintenance";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { syncOperationalNotifications } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +62,8 @@ export async function GET(request: Request) {
     const temporaryCleanup = await runMaintenanceStage("temporary-storage-cleanup", () =>
       cleanupTemporaryStorage(supabase)
     );
-    const degraded = [staleImports, storageDeletionOutbox, temporaryCleanup]
+    const notifications = await runMaintenanceStage("operational-notifications", () => syncOperationalNotifications());
+    const degraded = [staleImports, storageDeletionOutbox, temporaryCleanup, notifications]
       .some((stage) => stage.status === "degraded");
 
     return NextResponse.json(
@@ -71,7 +73,8 @@ export async function GET(request: Request) {
         stages: {
           staleImports,
           storageDeletionOutbox,
-          temporaryStorage: temporaryCleanup
+          temporaryStorage: temporaryCleanup,
+          notifications
         }
       },
       {

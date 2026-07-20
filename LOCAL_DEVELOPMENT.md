@@ -16,6 +16,8 @@ APP_ENV=local
 APP_PASSCODE=รหัสสำหรับเจ้าหน้าที่
 APP_ADMIN_PASSCODE=รหัสสำหรับผู้ดูแลระบบ
 APP_SESSION_SECRET=ค่าสุ่มอย่างน้อย-32-bytes
+# แนะนำให้แยกจาก session secret และห้ามเปลี่ยนหลังสร้าง Passcode profiles แล้ว
+APP_PASSCODE_PEPPER=ค่าสุ่มอย่างน้อย-32-bytes
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
@@ -30,6 +32,11 @@ openssl rand -hex 32
 ```
 
 ห้าม commit `.env.local` หรือส่ง `SUPABASE_SERVICE_ROLE_KEY` ให้บุคคลอื่น
+
+หลัง apply migration `20260715190000_passcode_profile_access_control.sql` ผู้ดูแลระบบสามารถสร้าง Passcode
+ประจำบุคคลจากหน้า `/admin` ได้ โดย `APP_PASSCODE` และ `APP_ADMIN_PASSCODE` ยังคงใช้เป็นช่องทาง bootstrap/ฉุกเฉิน
+ระบบเก็บเฉพาะ HMAC digest ของ Passcode ซึ่งผูกกับ `APP_PASSCODE_PEPPER`; หากเปลี่ยน pepper จะต้องกำหนด Passcode
+ใหม่ให้ทุกโปรไฟล์
 
 ## เปิด Dev Server
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { loginAction } from "@/app/login/actions";
 
@@ -29,14 +30,14 @@ function SubmitButton() {
 }
 
 export function LoginForm({ nextPath }: LoginFormProps) {
-  const [state, formAction] = useFormState<LoginFormState, FormData>(loginAction, initialState);
+  const [state, formAction] = useActionState<LoginFormState, FormData>(loginAction, initialState);
 
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="next" value={nextPath} />
       <div className="space-y-2">
         <label htmlFor="passcode" className="text-sm font-semibold text-slate-700">
-          รหัสผ่าน
+          Passcode ประจำบุคคล
         </label>
         <input
           id="passcode"
@@ -45,7 +46,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
           required
           autoFocus
           className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-base text-ink outline-none transition focus:border-brand focus:bg-white focus:shadow-[0_0_0_4px_var(--ring)]"
-          placeholder="กรอกรหัสผ่าน"
+          placeholder="กรอก Passcode"
+          autoComplete="current-password"
         />
       </div>
       {state.error ? (

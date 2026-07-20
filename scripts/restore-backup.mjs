@@ -1,11 +1,14 @@
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createDecipheriv, createHash, scrypt as scryptCallback } from "node:crypto";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseProjectRef as getProjectRef, parseRestoreArguments as parseArguments, prepareRestoreRows as prepareRows } from "./lib/restore-plan.mjs";
 
 const PRODUCTION_PROJECT_REF = "zllbfazkhrvlfutehkyh";
 const CHUNK_SIZE = 500;
+const scrypt = promisify(scryptCallback);
 const TABLES = [
   "tickets",
   "ticket_history",
@@ -13,11 +16,19 @@ const TABLES = [
   "report_batches",
   "report_batch_departments",
   "report_batch_items",
+  "ticket_assignment_events",
+  "report_workflow_events",
+  "audit_events",
   "report_evidence_versions",
   "report_evidence_status_events",
-  "report_archives"
+  "report_archives",
+  "passcode_profiles"
 ];
 const DELETE_ORDER = [
+  "passcode_profiles",
+  "audit_events",
+  "ticket_assignment_events",
+  "report_workflow_events",
   "report_batch_items",
   "report_batch_departments",
   "report_batches",
@@ -27,6 +38,7 @@ const DELETE_ORDER = [
   "report_archives"
 ];
 const INSERT_ORDER = [
+  "passcode_profiles",
   "tickets",
   "import_batches",
   "ticket_history",
@@ -42,40 +54,71 @@ const PRIMARY_KEYS = {
   report_batches: "id",
   report_batch_departments: "id",
   report_batch_items: "id",
+  ticket_assignment_events: "id",
+  report_workflow_events: "id",
+  audit_events: "id",
   report_evidence_versions: "id",
   report_evidence_status_events: "id",
-  report_archives: "id"
+  report_archives: "id",
+  passcode_profiles: "id"
 };
 
-function parseArguments(argv) {
-  const options = { apply: false, backupDirectory: "" };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === "--apply") {
-      options.apply = true;
-    } else if (argument === "--backup-dir") {
-      options.backupDirectory = argv[index + 1] ?? "";
-      index += 1;
-    } else {
-      throw new Error(`Unknown argument: ${argument}`);
-    }
+async function decryptArtifact(data, passphrase) {
+  const magic = data.subarray(0, 9).toString("ascii");
+  if (magic !== "TFBACKUP1" || data.length < 13) {
+    throw new Error("Encrypted backup artifact has an invalid format");
   }
-
-  if (!options.backupDirectory) {
-    throw new Error("Usage: node scripts/restore-backup.mjs --backup-dir <extracted-directory> [--apply]");
+  const headerLength = data.readUInt32BE(9);
+  const headerEnd = 13 + headerLength;
+  if (headerLength < 2 || headerEnd > data.length) {
+    throw new Error("Encrypted backup artifact header is invalid");
   }
-
-  return options;
+  const header = JSON.parse(data.subarray(13, headerEnd).toString("utf8"));
+  if (header.format !== "tf-backup-encrypted-v1" || header.cipher !== "aes-256-gcm" || header.kdf !== "scrypt") {
+    throw new Error("Encrypted backup artifact uses an unsupported format");
+  }
+  const key = await scrypt(passphrase, Buffer.from(header.salt, "base64"), 32);
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(header.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(header.tag, "base64"));
+  return Buffer.concat([decipher.update(data.subarray(headerEnd)), decipher.final()]);
 }
 
-function getProjectRef(url) {
-  const hostname = new URL(url).hostname;
-  const match = hostname.match(/^([a-z0-9]+)\.supabase\.co$/);
-  if (!match) {
-    throw new Error("SUPABASE_URL is not a canonical Supabase project URL");
+async function verifyArtifact(options) {
+  if (!options.artifactPath && !options.artifactMetadataPath) return null;
+  if (!options.artifactPath || !options.artifactMetadataPath) {
+    throw new Error("--artifact and --artifact-manifest must be supplied together");
   }
-  return match[1];
+
+  const [artifact, metadataText] = await Promise.all([
+    readFile(path.resolve(options.artifactPath)),
+    readFile(path.resolve(options.artifactMetadataPath), "utf8")
+  ]);
+  const metadata = JSON.parse(metadataText);
+  const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
+  if (metadata.format !== "tf-backup-artifact-v1" || metadata.artifactSha256 !== artifactSha256) {
+    throw new Error("Backup artifact checksum does not match its manifest");
+  }
+
+  let plaintext = artifact;
+  if (metadata.encrypted) {
+    const passphrase = process.env.BACKUP_ENCRYPTION_PASSPHRASE || "";
+    if (!passphrase) {
+      throw new Error("BACKUP_ENCRYPTION_PASSPHRASE is required to authenticate the encrypted artifact");
+    }
+    plaintext = await decryptArtifact(artifact, passphrase);
+  }
+  const plaintextSha256 = createHash("sha256").update(plaintext).digest("hex");
+  if (metadata.plaintextSha256 !== plaintextSha256) {
+    throw new Error("Backup plaintext checksum does not match its manifest");
+  }
+
+  return {
+    backupId: metadata.backupId || null,
+    artifactSha256,
+    plaintextSha256,
+    encrypted: metadata.encrypted === true,
+    retainUntil: metadata.retainUntil || null
+  };
 }
 
 async function readBackup(backupDirectory) {
@@ -117,16 +160,6 @@ async function deleteRows(supabase, table) {
   }
 }
 
-function prepareRows(table, rows) {
-  if (table === "ticket_history" || table === "report_batch_items" || table === "report_evidence_status_events") {
-    return rows.map(({ id: _id, ...row }) => row);
-  }
-  if (table === "report_batch_departments") {
-    return rows.map(({ current_evidence_version_id: _currentEvidenceVersionId, ...row }) => row);
-  }
-  return rows;
-}
-
 async function insertRows(supabase, table, rows) {
   const preparedRows = prepareRows(table, rows);
   for (let offset = 0; offset < preparedRows.length; offset += CHUNK_SIZE) {
@@ -156,6 +189,29 @@ async function restoreImmutableEvidence(supabase, rowsByTable) {
     throw new Error(
       `Evidence restore count mismatch: expected ${rowsByTable.report_evidence_versions.length}/${rowsByTable.report_evidence_status_events.length}, got ${restoredVersions}/${restoredEvents}`
     );
+  }
+}
+
+async function restoreOperationalHistory(supabase, rowsByTable) {
+  const result = await supabase.rpc("restore_operational_history_snapshot", {
+    p_assignments: rowsByTable.ticket_assignment_events,
+    p_workflow: rowsByTable.report_workflow_events,
+    p_audit: rowsByTable.audit_events
+  });
+
+  if (result.error) {
+    throw new Error(`Could not restore operational history: ${result.error.message}`);
+  }
+
+  const expected = {
+    assignments: rowsByTable.ticket_assignment_events.length,
+    workflow: rowsByTable.report_workflow_events.length,
+    audit: rowsByTable.audit_events.length
+  };
+  for (const [key, count] of Object.entries(expected)) {
+    if (Number(result.data?.[key] ?? -1) !== count) {
+      throw new Error(`Operational history restore count mismatch for ${key}: expected ${count}, got ${result.data?.[key]}`);
+    }
   }
 }
 
@@ -235,7 +291,22 @@ async function verifyStorage(supabase, backupDirectory, manifest) {
   }
 }
 
+async function recordRestoreAudit(supabase, input) {
+  const result = await supabase.from("audit_events").insert({
+    actor_role: "system",
+    action: input.action,
+    resource_type: "backup_artifact",
+    resource_id: input.backupId || null,
+    outcome: input.outcome || "success",
+    metadata: input.metadata || {}
+  });
+  if (result.error) {
+    console.error(`Restore audit write failed: ${result.error.message}`);
+  }
+}
+
 const options = parseArguments(process.argv.slice(2));
+const verifiedArtifact = await verifyArtifact(options);
 const supabaseUrl = process.env.SUPABASE_URL;
 let serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const confirmation = process.env.RESTORE_CONFIRM_PROJECT_REF;
@@ -272,41 +343,102 @@ console.log(JSON.stringify({
   backupGeneratedAt: manifest.generatedAt,
   beforeCounts,
   restoreCounts: Object.fromEntries(TABLES.map((table) => [table, rowsByTable[table].length])),
-  storageObjects: manifest.storage?.length ?? 0
+  storageObjects: manifest.storage?.length ?? 0,
+  verifiedArtifact
 }, null, 2));
 
 if (!options.apply) {
+  await recordRestoreAudit(supabase, {
+    action: "backup.restore_previewed",
+    backupId: verifiedArtifact?.backupId,
+    metadata: { targetProjectRef: projectRef, verifiedArtifact }
+  });
   console.log("Dry run complete. Re-run with --apply to restore this backup.");
   process.exit(0);
 }
 
-for (const table of DELETE_ORDER) {
-  await deleteRows(supabase, table);
+if (!verifiedArtifact && !options.allowUnverifiedArtifact) {
+  throw new Error(
+    "Refusing an unverified restore. Supply --artifact and --artifact-manifest, or explicitly use --allow-unverified-artifact."
+  );
 }
-for (const table of INSERT_ORDER) {
-  await insertRows(supabase, table, rowsByTable[table]);
-}
-await restoreImmutableEvidence(supabase, rowsByTable);
-for (const department of rowsByTable.report_batch_departments) {
-  if (!department.current_evidence_version_id) continue;
-  const result = await supabase
-    .from("report_batch_departments")
-    .update({ current_evidence_version_id: department.current_evidence_version_id })
-    .eq("id", department.id);
-  if (result.error) {
-    throw new Error(`Could not restore evidence pointer for department ${department.id}: ${result.error.message}`);
-  }
-}
-await restoreStorage(supabase, backupDirectory, manifest);
-await verifyStorage(supabase, backupDirectory, manifest);
 
-const afterCounts = Object.fromEntries(
-  await Promise.all(TABLES.map(async (table) => [table, await countRows(supabase, table)]))
+const backedUpTables = new Set(
+  Array.isArray(manifest.tables) ? manifest.tables.map((entry) => entry?.table).filter(Boolean) : []
 );
-for (const table of TABLES) {
-  if (afterCounts[table] !== rowsByTable[table].length) {
-    throw new Error(`Verification failed for ${table}: expected ${rowsByTable[table].length}, got ${afterCounts[table]}`);
-  }
-}
 
-console.log(JSON.stringify({ status: "restored", targetProjectRef: projectRef, afterCounts }, null, 2));
+try {
+  for (const table of DELETE_ORDER) {
+    if (table === "passcode_profiles" && !backedUpTables.has(table)) continue;
+    await deleteRows(supabase, table);
+  }
+  for (const table of INSERT_ORDER) {
+    if (table === "passcode_profiles" && !backedUpTables.has(table)) continue;
+    await insertRows(supabase, table, rowsByTable[table]);
+  }
+  const hasOperationalHistory = [
+    "ticket_assignment_events",
+    "report_workflow_events",
+    "audit_events"
+  ].some((table) => backedUpTables.has(table));
+  if (hasOperationalHistory) {
+    // Report inserts emit workflow/audit rows. Clear those and restore all
+    // backed-up append-only streams atomically with their original IDs.
+    await deleteRows(supabase, "ticket_assignment_events");
+    await deleteRows(supabase, "report_workflow_events");
+    await deleteRows(supabase, "audit_events");
+    await restoreOperationalHistory(supabase, rowsByTable);
+  }
+  await restoreImmutableEvidence(supabase, rowsByTable);
+  for (const department of rowsByTable.report_batch_departments) {
+    if (!department.current_evidence_version_id) continue;
+    const result = await supabase
+      .from("report_batch_departments")
+      .update({ current_evidence_version_id: department.current_evidence_version_id })
+      .eq("id", department.id);
+    if (result.error) {
+      throw new Error(`Could not restore evidence pointer for department ${department.id}: ${result.error.message}`);
+    }
+  }
+  await restoreStorage(supabase, backupDirectory, manifest);
+  await verifyStorage(supabase, backupDirectory, manifest);
+
+  const afterCounts = Object.fromEntries(
+    await Promise.all(TABLES.map(async (table) => [table, await countRows(supabase, table)]))
+  );
+  for (const table of TABLES) {
+    if (
+      (
+        table === "ticket_assignment_events"
+        || table === "report_workflow_events"
+        || table === "audit_events"
+        || table === "passcode_profiles"
+      )
+      && !backedUpTables.has(table)
+    ) {
+      continue;
+    }
+    if (afterCounts[table] !== rowsByTable[table].length) {
+      throw new Error(`Verification failed for ${table}: expected ${rowsByTable[table].length}, got ${afterCounts[table]}`);
+    }
+  }
+
+  await recordRestoreAudit(supabase, {
+    action: "backup.restored",
+    backupId: verifiedArtifact?.backupId,
+    metadata: { targetProjectRef: projectRef, afterCounts, verifiedArtifact }
+  });
+  console.log(JSON.stringify({ status: "restored", targetProjectRef: projectRef, afterCounts }, null, 2));
+} catch (error) {
+  await recordRestoreAudit(supabase, {
+    action: "backup.restore_failed",
+    backupId: verifiedArtifact?.backupId,
+    outcome: "failure",
+    metadata: {
+      targetProjectRef: projectRef,
+      verifiedArtifact,
+      message: error instanceof Error ? error.message : "unknown error"
+    }
+  });
+  throw error;
+}

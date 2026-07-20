@@ -26,8 +26,8 @@ const config: Config = {
         sans: ["IBM Plex Sans Thai", "IBM Plex Sans", "Noto Sans Thai", "system-ui", "sans-serif"]
       },
       boxShadow: {
-        panel: "0 18px 40px rgba(0, 75, 48, 0.10)",
-        hover: "0 10px 24px rgba(0, 75, 48, 0.09)"
+        panel: "0 2px 8px rgba(0, 75, 48, 0.08)",
+        hover: "0 2px 8px rgba(0, 75, 48, 0.10)"
       }
     }
   },

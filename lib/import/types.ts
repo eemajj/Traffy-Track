@@ -69,12 +69,18 @@ export type ImportSummary = {
 };
 
 export type ImportJobStatus = "queued" | "running" | "completed" | "failed";
+export type ImportProcessingPhase = "staging" | "finalizing";
 
 export type ImportJob = ImportSummary & {
   status: ImportJobStatus;
   errorMessage: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt: string | null;
+  heartbeatAt: string | null;
   importedAt: string;
   completedAt: string | null;
+  processingPhase: ImportProcessingPhase | null;
 };
 
 export type ImportPreview = {

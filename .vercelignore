@@ -1,0 +1,17 @@
+.env
+.env.*
+.backups/
+.backup-keys/
+.next/
+.next-dev/
+coverage/
+node_modules/
+output/
+tmp/
+.npm/
+.supabase/
+summarizereport/
+*.csv
+*.tsbuildinfo
+._*
+**/._*

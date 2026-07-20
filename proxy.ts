@@ -1,14 +1,70 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { getFirstAllowedPath, getRoutePermission, hasPermission } from "@/lib/access-permissions";
 import { getSessionClaims } from "@/lib/session";
 
 const authCookieName = process.env.APP_AUTH_COOKIE || "citydata-passcode";
 
-const protectedPrefixes = ["/import", "/dashboard", "/analytics", "/cases", "/map", "/report", "/admin"];
+const protectedPrefixes = ["/import", "/dashboard", "/analytics", "/cases", "/map", "/report", "/admin", "/account"];
+const maintenanceWriteExemptions = ["/api/admin/maintenance", "/api/admin/backup/export", "/api/cron/"];
+
+async function isMaintenanceEnabled() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return false;
+  try {
+    const url = new URL("/rest/v1/system_settings", supabaseUrl);
+    url.searchParams.set("singleton", "eq.true");
+    url.searchParams.set("select", "maintenance_enabled");
+    url.searchParams.set("limit", "1");
+    const response = await fetch(url, {
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+      cache: "no-store"
+    });
+    if (!response.ok) return false;
+    const rows = await response.json() as Array<{ maintenance_enabled?: boolean }>;
+    return rows[0]?.maintenance_enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+async function isIdentitySessionCurrent(identityId: string, accessVersion: number) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return false;
+
+  try {
+    const url = new URL("/rest/v1/passcode_profiles", supabaseUrl);
+    url.searchParams.set("id", `eq.${identityId}`);
+    url.searchParams.set("access_version", `eq.${accessVersion}`);
+    url.searchParams.set("is_active", "eq.true");
+    url.searchParams.set("or", `(expires_at.is.null,expires_at.gt.${new Date().toISOString()})`);
+    url.searchParams.set("select", "id");
+    url.searchParams.set("limit", "1");
+    const response = await fetch(url, {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`
+      },
+      cache: "no-store"
+    });
+    if (!response.ok) return false;
+    const rows = await response.json() as Array<{ id?: string }>;
+    return rows[0]?.id === identityId;
+  } catch {
+    return false;
+  }
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  const isWrite = !["GET", "HEAD", "OPTIONS"].includes(request.method);
+  const isExemptWrite = maintenanceWriteExemptions.some((prefix) => pathname.startsWith(prefix));
+  if (pathname.startsWith("/api/") && isWrite && !isExemptWrite && await isMaintenanceEnabled()) {
+    return NextResponse.json({ error: "ระบบอยู่ในโหมดบำรุงรักษาและปิดการแก้ไขข้อมูลชั่วคราว" }, { status: 503 });
+  }
   const isProtected = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
   if (!isProtected) {
@@ -24,8 +80,26 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if ((pathname === "/admin" || pathname.startsWith("/admin/")) && session.role !== "admin") {
-    return NextResponse.redirect(new URL("/dashboard?access=denied", request.url));
+  if (session.mustRotate && pathname !== "/account/passcode") {
+    return NextResponse.redirect(new URL("/account/passcode", request.url));
+  }
+
+  if (
+    session.identityId &&
+    session.accessVersion !== null &&
+    !(await isIdentitySessionCurrent(session.identityId, session.accessVersion))
+  ) {
+    const response = NextResponse.redirect(new URL("/login?session=expired", request.url));
+    response.cookies.set(authCookieName, "", { path: "/", maxAge: 0 });
+    return response;
+  }
+
+  const requiredPermission = getRoutePermission(pathname);
+  if (requiredPermission && !hasPermission(session, requiredPermission)) {
+    const fallback = getFirstAllowedPath(session);
+    const deniedUrl = new URL(fallback, request.url);
+    deniedUrl.searchParams.set("access", "denied");
+    return NextResponse.redirect(deniedUrl);
   }
 
   return NextResponse.next();
@@ -40,5 +114,7 @@ export const config = {
     "/map/:path*",
     "/report/:path*",
     "/admin/:path*"
+    ,"/account/:path*"
+    ,"/api/:path*"
   ]
 };

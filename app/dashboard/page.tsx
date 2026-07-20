@@ -1,8 +1,11 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
+import { TraffyStatistics } from "@/app/dashboard/traffy-statistics";
 import { AppShell } from "@/components/app-shell";
+import { WorkflowActionCenter } from "@/components/workflow-action-center";
 import { getDashboardData } from "@/lib/dashboard";
+import { normalizeDashboardDateRange } from "@/lib/dashboard/statistics";
+import { getDashboardStatistics } from "@/lib/dashboard/statistics-query";
 
 export const dynamic = "force-dynamic";
 
@@ -53,16 +56,36 @@ function formatChangeValue(value: string | null, field: string) {
   return value;
 }
 
-export default async function DashboardPage() {
-  const data = await getDashboardData();
+type DashboardPageProps = {
+  searchParams?: Promise<{
+    from?: string | string[];
+    to?: string | string[];
+  }>;
+};
+
+export default async function DashboardPage(props: DashboardPageProps) {
+  const searchParams = (await props.searchParams) || {};
+  const range = normalizeDashboardDateRange(searchParams);
+  const [data, statistics] = await Promise.all([
+    getDashboardData(),
+    getDashboardStatistics(range)
+  ]);
 
   return (
     <AppShell
       title="ภาพรวมระบบ"
-      description="สรุปเรื่องคงค้าง เรื่องที่รอจัดฝ่ายรับผิดชอบ และรายการเปลี่ยนแปลงสำคัญจากรอบนำเข้าล่าสุด"
+      description="สรุปสถานะเรื่องตามช่วงวันที่ด้วยสูตรเดียวกับ Traffy พร้อมงานคงค้างและรายการที่ต้องดำเนินการในระบบ"
     >
+      <div className="space-y-10">
+        <TraffyStatistics data={statistics} />
+
+        <section aria-labelledby="local-operations-title" className="space-y-5">
+          <div className="border-b border-border pb-4">
+            <h2 id="local-operations-title" className="text-2xl font-semibold tracking-[-0.02em] text-ink">งานที่ต้องดำเนินการในระบบนี้</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">ติดตามรอบนำเข้า เรื่องที่ยังไม่มีฝ่าย และการเปลี่ยนแปลงล่าสุด โดยไม่ปะปนกับสถิติตามช่วงวันที่ด้านบน</p>
+          </div>
       {data.status === "missing_env" ? (
-        <section className="rounded-3xl border border-warning/20 bg-warning/10 p-6">
+        <section className="rounded-2xl border border-warning/20 bg-warning/10 p-6">
           <h2 className="text-xl font-bold text-warning">Supabase ยังไม่ถูกตั้งค่า</h2>
           <p className="mt-3 text-sm leading-6 text-warning">
             หน้าภาพรวมระบบพร้อมดึงข้อมูลแล้ว แต่ต้องมี `SUPABASE_URL` และ `SUPABASE_SERVICE_ROLE_KEY` ใน `.env.local`
@@ -70,7 +93,7 @@ export default async function DashboardPage() {
           </p>
         </section>
       ) : data.status === "unavailable" ? (
-        <section className="rounded-3xl border border-warning/20 bg-[rgba(201,131,34,0.12)] p-6">
+        <section className="rounded-2xl border border-warning/20 bg-[rgba(201,131,34,0.12)] p-6">
           <h2 className="text-xl font-bold text-warning">หน้าภาพรวมระบบยังดึงข้อมูลไม่ได้ชั่วคราว</h2>
           <p className="mt-3 text-sm leading-6 text-warning">
             {data.message}
@@ -78,31 +101,29 @@ export default async function DashboardPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-5">
-            <section className="motion-card rounded-3xl bg-white p-6 shadow-panel" style={{ "--motion-index": 0 } as CSSProperties}>
-              <p className="text-sm text-muted">เรื่องคงค้างทั้งหมด</p>
-              <p className="mt-2 text-3xl font-bold">{formatNumber(data.pendingTicketCount)}</p>
-            </section>
-            <section className="motion-card rounded-3xl border border-danger/20 bg-danger/5 p-6" style={{ "--motion-index": 1 } as CSSProperties}>
-              <p className="text-sm text-danger/80">รอจัดฝ่ายรับผิดชอบ</p>
-              <p className="mt-2 text-3xl font-bold text-danger">{formatNumber(data.unassignedCount)}</p>
-            </section>
-            <section className="motion-card rounded-3xl bg-white p-6 shadow-panel" style={{ "--motion-index": 2 } as CSSProperties}>
-              <p className="text-sm text-muted">เรื่องใหม่รอบล่าสุด</p>
-              <p className="mt-2 text-3xl font-bold">{formatNumber(data.latestBatch?.new_tickets ?? 0)}</p>
-            </section>
-            <section className="motion-card rounded-3xl border border-warning/25 bg-warning/10 p-6" style={{ "--motion-index": 3 } as CSSProperties}>
-              <p className="text-sm text-warning">เปิดกลับรอบล่าสุด</p>
-              <p className="mt-2 text-3xl font-bold text-warning">{formatNumber(data.reopenedTicketCount)}</p>
-            </section>
-            <section className="motion-card rounded-3xl bg-white p-6 shadow-panel" style={{ "--motion-index": 4 } as CSSProperties}>
-              <p className="text-sm text-muted">รายการเปลี่ยนสำคัญ</p>
-              <p className="mt-2 text-3xl font-bold">{formatNumber(data.actionableChangeCount)}</p>
-            </section>
-          </div>
+          <dl aria-label="สรุปสถานะระบบ" className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-4">
+            <div className="bg-white p-4 sm:p-5">
+              <dt className="text-sm text-muted">เรื่องคงค้าง</dt>
+              <dd className="mt-1 text-2xl font-semibold text-ink">{formatNumber(data.pendingTicketCount)}</dd>
+            </div>
+            <div className="bg-white p-4 sm:p-5">
+              <dt className="text-sm text-muted">เรื่องใหม่รอบล่าสุด</dt>
+              <dd className="mt-1 text-2xl font-semibold text-ink">{formatNumber(data.latestBatch?.new_tickets ?? 0)}</dd>
+            </div>
+            <div className="bg-white p-4 sm:p-5">
+              <dt className="text-sm text-muted">ไม่มีฝ่ายใน CityData</dt>
+              <dd className="mt-1 text-2xl font-semibold text-danger">{formatNumber(data.unassignedCount)}</dd>
+            </div>
+            <div className="bg-white p-4 sm:p-5">
+              <dt className="text-sm text-muted">เปิดกลับรอบล่าสุด</dt>
+              <dd className="mt-1 text-2xl font-semibold text-warning">{formatNumber(data.reopenedTicketCount)}</dd>
+            </div>
+          </dl>
+
+          <WorkflowActionCenter items={data.actionCenter} />
 
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="rounded-2xl border border-border bg-white p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold">รอบนำเข้าล่าสุด</h2>
@@ -120,36 +141,38 @@ export default async function DashboardPage() {
               </div>
 
               {data.latestBatch ? (
-                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-2xl bg-surface p-4">
-                    <p className="text-sm text-muted">แถวทั้งหมด</p>
-                    <p className="mt-2 text-2xl font-bold">{formatNumber(data.latestBatch.total_rows)}</p>
+                <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+                  <div className="bg-white p-4">
+                    <dt className="text-xs text-muted">แถวทั้งหมด</dt>
+                    <dd className="mt-1 text-xl font-semibold text-ink">{formatNumber(data.latestBatch.total_rows)}</dd>
                   </div>
-                  <div className="rounded-2xl bg-success/10 p-4">
-                    <p className="text-sm text-success">เรื่องใหม่</p>
-                    <p className="mt-2 text-2xl font-bold text-success">{formatNumber(data.latestBatch.new_tickets)}</p>
+                  <div className="bg-white p-4">
+                    <dt className="text-xs text-success">เรื่องใหม่</dt>
+                    <dd className="mt-1 text-xl font-semibold text-success">{formatNumber(data.latestBatch.new_tickets)}</dd>
                   </div>
-                  <div className="rounded-2xl bg-warning/10 p-4">
-                    <p className="text-sm text-warning">การเปลี่ยนทั้งหมด</p>
-                    <p className="mt-2 text-2xl font-bold text-warning">{formatNumber(data.latestBatch.changed_tickets)}</p>
-                    <p className="mt-1 text-xs leading-5 text-warning">ตัวเลขรวมจากรอบนำเข้าที่รวมเวลาอัปเดต จึงไม่ใช้เป็นรายการติดตาม</p>
+                  <div className="bg-white p-4">
+                    <dt className="text-xs text-warning">การเปลี่ยนทั้งหมด</dt>
+                    <dd className="mt-1 text-xl font-semibold text-warning">{formatNumber(data.latestBatch.changed_tickets)}</dd>
                   </div>
-                  <div className="rounded-2xl bg-surface-strong p-4">
-                    <p className="text-sm text-muted">ไม่เปลี่ยน</p>
-                    <p className="mt-2 text-2xl font-bold text-ink">{formatNumber(data.latestBatch.unchanged_tickets)}</p>
+                  <div className="bg-white p-4">
+                    <dt className="text-xs text-muted">ไม่เปลี่ยน</dt>
+                    <dd className="mt-1 text-xl font-semibold text-ink">{formatNumber(data.latestBatch.unchanged_tickets)}</dd>
                   </div>
-                </div>
+                </dl>
+              ) : null}
+              {data.latestBatch ? (
+                <p className="mt-3 text-xs leading-5 text-muted">“การเปลี่ยนทั้งหมด” รวมเวลาอัปเดต จึงใช้ดูภาพรวมรอบนำเข้า ไม่ใช่จำนวนงานที่ต้องติดตาม</p>
               ) : null}
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="rounded-2xl border border-border bg-white p-6">
               <h2 className="text-xl font-bold">เรื่องคงค้างแยกตามฝ่าย</h2>
               <div className="mt-4 space-y-3">
                 {data.departmentSummary.length === 0 ? (
                   <p className="text-sm text-muted">ยังไม่มีข้อมูลฝ่ายที่มีเรื่องคงค้าง</p>
                 ) : (
                   data.departmentSummary.map((row) => (
-                    <div key={row.dept_name} className="motion-row flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
+                    <div key={row.dept_name} className="flex items-center justify-between border-b border-border px-1 py-3 last:border-b-0">
                       <p className="pr-4 text-sm font-medium text-ink">{row.dept_name}</p>
                       <span className="rounded-full bg-brand px-3 py-1 text-sm font-semibold text-white">
                         {formatNumber(row.pending_count)}
@@ -162,24 +185,24 @@ export default async function DashboardPage() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-            <section className="rounded-3xl border border-danger/20 bg-danger/5 p-6">
-              <h2 className="text-xl font-bold text-danger">รอจัดฝ่ายรับผิดชอบ</h2>
-              <p className="mt-2 text-sm leading-6 text-danger/80">
-                พบ {formatNumber(data.unassignedCount)} เรื่องคงค้างที่ยังไม่พบฝ่ายรับผิดชอบ จึงยังไม่รู้ว่าต้องส่งตามฝ่ายใด
+            <section className="rounded-2xl border border-warning/20 bg-warning/5 p-6">
+              <h2 className="text-xl font-bold text-warning">ยังไม่มีฝ่ายในข้อมูล CityData</h2>
+              <p className="mt-2 text-sm leading-6 text-warning">
+                พบ {formatNumber(data.unassignedCount)} เรื่องคงค้างที่ไฟล์ต้นทางยังไม่ระบุฝ่าย ระบบแสดงเพื่อการตรวจสอบโดยไม่แก้ไขข้อมูลต้นทาง
               </p>
               <div className="mt-4 space-y-3">
                 {data.unassignedTickets.length === 0 ? (
-                  <p className="text-sm text-danger/80">ไม่มีเรื่องในหมวดนี้</p>
+                  <p className="text-sm text-warning">ไม่มีเรื่องในหมวดนี้</p>
                 ) : (
                   data.unassignedTickets.map((ticket) => (
-                    <article key={ticket.ticket_id} className="motion-row rounded-2xl border border-danger/15 bg-white p-4">
+                    <article key={ticket.ticket_id} className="rounded-xl border border-danger/15 bg-white p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="font-mono text-xs text-muted">{ticket.ticket_id}</p>
                           <h3 className="mt-1 text-sm font-semibold text-ink">{ticket.state || "ไม่ระบุสถานะ"}</h3>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <span className="rounded-full bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">รอจัดฝ่าย</span>
+                          <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">ไม่มีฝ่ายใน CityData</span>
                           <span className="text-xs text-muted">{formatDateTime(ticket.last_activity)}</span>
                         </div>
                       </div>
@@ -194,7 +217,7 @@ export default async function DashboardPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="rounded-2xl border border-border bg-white p-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-xl font-bold">การเปลี่ยนแปลงที่ต้องดูรอบล่าสุด</h2>
@@ -286,6 +309,8 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+        </section>
+      </div>
     </AppShell>
   );
 }

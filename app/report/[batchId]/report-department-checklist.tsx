@@ -78,7 +78,8 @@ function formatDateTime(value: string | null) {
 
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok"
   }).format(new Date(value));
 }
 
@@ -104,6 +105,12 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments, canMana
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [withdrawalDepartmentId, setWithdrawalDepartmentId] = useState<string | null>(null);
   const [withdrawalReasons, setWithdrawalReasons] = useState<Record<string, string>>({});
+  const [pendingUndo, setPendingUndo] = useState<{
+    departmentId: string;
+    departmentName: string;
+    evidenceVersionId: string;
+    undoUntil: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -239,6 +246,8 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments, canMana
         | {
             error?: string;
             department?: DepartmentEvidenceStatus;
+            evidenceVersionId?: string;
+            undoUntil?: string | null;
           }
         | null;
 
@@ -278,25 +287,80 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments, canMana
       }
       setWithdrawalDepartmentId(null);
       setWithdrawalReasons((current) => ({ ...current, [department.id]: "" }));
-      setStatusMessage(`ถอนหลักฐานของ ${department.dept_name} แล้ว`);
+      if (payload?.evidenceVersionId) {
+        setPendingUndo({
+          departmentId: department.id,
+          departmentName: department.dept_name,
+          evidenceVersionId: payload.evidenceVersionId,
+          undoUntil: payload.undoUntil || null
+        });
+      }
+      setStatusMessage(`ถอนหลักฐานของ ${department.dept_name} แล้ว ไฟล์จะถูกลบหลังช่วงยกเลิก 15 นาที`);
+    } finally {
+      setDeletingDepartmentId(null);
+    }
+  }
+
+  async function handleUndoWithdrawal() {
+    if (!pendingUndo) return;
+    setDeletingDepartmentId(pendingUndo.departmentId);
+    setDeleteError(null);
+    try {
+      const response = await fetch(`/api/report/${batchId}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "undo-withdrawal",
+          dept: pendingUndo.departmentName,
+          evidenceVersionId: pendingUndo.evidenceVersionId
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        department?: DepartmentEvidenceStatus;
+      } | null;
+      if (!response.ok) throw new Error(payload?.error || "ยกเลิกการถอนไม่สำเร็จ");
+      if (payload?.department) {
+        setDepartments((current) => mergeDepartmentEvidenceStatuses(current, [payload.department!]));
+      }
+      setPendingUndo(null);
+      setStatusMessage(`ยกเลิกการถอนหลักฐานของ ${pendingUndo.departmentName} แล้ว`);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "ยกเลิกการถอนไม่สำเร็จ");
     } finally {
       setDeletingDepartmentId(null);
     }
   }
 
   return (
-    <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+    <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-panel">
       <h2 className="text-xl font-semibold tracking-[-0.01em] text-ink">รายการตรวจรายฝ่าย</h2>
       <div aria-live="polite" aria-atomic="true">
         {deleteError ? <p className="mt-3 text-sm font-medium text-danger" role="alert">{deleteError}</p> : null}
         {statusMessage ? <p className="mt-3 text-sm font-medium text-success" role="status">{statusMessage}</p> : null}
       </div>
+      {pendingUndo ? (
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-ink">
+            ถอนหลักฐานของ {pendingUndo.departmentName} แล้ว
+            {pendingUndo.undoUntil ? ` · ยกเลิกได้ถึง ${formatDateTime(pendingUndo.undoUntil)}` : " · ยกเลิกได้ภายใน 15 นาที"}
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleUndoWithdrawal()}
+            disabled={deletingDepartmentId === pendingUndo.departmentId}
+            className="min-h-11 rounded-xl border border-warning bg-white px-4 py-2 text-sm font-semibold text-warning disabled:opacity-60"
+          >
+            Undo การถอน
+          </button>
+        </div>
+      ) : null}
       <div className="mt-4 space-y-3">
         {departments.map((department) => {
           const hasEvidence = Boolean(department.evidence_file_url);
 
           return (
-            <div key={department.id} className="space-y-3 rounded-3xl border border-border bg-surface/55 p-4">
+            <div key={department.id} className="space-y-3 rounded-2xl border border-border bg-surface/55 p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="space-y-1">
                   <h3 className="text-base font-semibold text-ink">{department.dept_name}</h3>
@@ -408,7 +472,7 @@ export function ReportDepartmentChecklist({ batchId, initialDepartments, canMana
                   <h4 id={`withdraw-title-${department.id}`} className="text-sm font-semibold text-danger">
                     ยืนยันถอนหลักฐานเวอร์ชัน {department.evidence_version_number || "ปัจจุบัน"}
                   </h4>
-                  <p className="mt-1 text-xs leading-5 text-muted">ระบบจะหยุดใช้ไฟล์นี้เป็นหลักฐานปัจจุบันและบันทึกเหตุผลไว้ในประวัติ</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">ระบบจะหยุดใช้ไฟล์นี้ทันที แต่ยังยกเลิกการถอนได้ 15 นาทีก่อนลบไฟล์จริง</p>
                   <label className="mt-3 block text-sm font-semibold text-ink" htmlFor={`withdraw-reason-${department.id}`}>
                     เหตุผลที่ถอน <span className="font-normal text-muted">(อย่างน้อย 5 ตัวอักษร)</span>
                   </label>

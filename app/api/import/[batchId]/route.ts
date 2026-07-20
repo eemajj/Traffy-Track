@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_: Request, props: { params: Promise<{ batchId: string }> }) {
   const params = await props.params;
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("import:manage");
   if (unauthorized) {
     return unauthorized;
   }

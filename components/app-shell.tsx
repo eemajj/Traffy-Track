@@ -1,9 +1,16 @@
-import { ReactNode } from "react";
+import { ReactNode, Suspense } from "react";
+import { redirect } from "next/navigation";
 
 import { logoutAction } from "@/app/login/actions";
 import { NavigationProgress, PendingNavLink } from "@/components/navigation-feedback";
+import { ContextReturnLink } from "@/components/context-return-link";
+import { AccessFeedback } from "@/components/access-feedback";
+import { DataFreshnessBanner } from "@/components/data-freshness-banner";
+import { CollapsibleDesktopShell } from "@/components/collapsible-desktop-shell";
+import { hasPermission } from "@/lib/access-permissions";
 import { getCurrentSessionClaims } from "@/lib/auth";
 import { appNavigation } from "@/lib/routes";
+import { getSystemStatus } from "@/lib/system-status";
 
 type AppShellProps = {
   title: string;
@@ -13,7 +20,9 @@ type AppShellProps = {
 
 export async function AppShell({ title, description, children }: AppShellProps) {
   const session = await getCurrentSessionClaims();
-  const navigationItems = appNavigation.filter((item) => session && item.roles.includes(session.role));
+  if (!session) redirect("/login?session=expired");
+  const navigationItems = appNavigation.filter((item) => hasPermission(session, item.permission));
+  const systemStatus = await getSystemStatus();
 
   return (
     <div className="min-h-screen bg-bg text-ink">
@@ -24,43 +33,83 @@ export async function AppShell({ title, description, children }: AppShellProps) 
         ข้ามไปยังเนื้อหาหลัก
       </a>
       <NavigationProgress />
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <header className="app-header motion-shell mb-8 overflow-hidden rounded-[28px] border border-border/80 bg-white/95 p-6 shadow-panel">
-          <div className="motion-rail mb-6 h-1.5 w-28 rounded-full bg-brand/80" />
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <p className="text-sm font-semibold tracking-[0.01em] text-muted">
-                ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา
-              </p>
-              <h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.02em] text-ink">{title}</h1>
-              <p className="max-w-3xl text-sm leading-6 text-muted">{description}</p>
+      <CollapsibleDesktopShell
+        sidebar={(
+          <div className="flex h-full flex-col">
+            <div className="flex items-center gap-3 px-2">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-sm font-bold text-white" aria-hidden="true">
+                TF
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink">Traffy Track</p>
+                <p className="text-xs text-muted">เขตทวีวัฒนา</p>
+              </div>
             </div>
-            <nav aria-label="เมนูหลัก" className="flex flex-wrap gap-2">
-              {session ? (
-                <span className="inline-flex items-center rounded-full bg-surface px-3 py-2 text-xs font-semibold text-muted">
-                  สิทธิ์: {session.role === "admin" ? "ผู้ดูแลระบบ" : "เจ้าหน้าที่"}
-                </span>
-              ) : null}
+            <nav aria-label="เมนูหลัก" className="mt-7 space-y-1">
               {navigationItems.map((item) => (
-                <PendingNavLink
-                  key={item.href}
-                  href={item.href}
-                  label={item.label}
-                />
+                <PendingNavLink key={item.href} href={item.href} label={item.label} layout="sidebar" />
               ))}
-              <form action={logoutAction}>
+            </nav>
+            <div className="mt-auto border-t border-border pt-4">
+              <div className="px-2">
+                <p className="truncate text-sm font-semibold text-ink">{session.displayName}</p>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  {session.position ? `${session.position} · ` : ""}{session.roleLabel}
+                </p>
+              </div>
+              <form action={logoutAction} className="mt-3">
                 <button
                   type="submit"
-                  className="inline-flex min-h-11 items-center rounded-2xl border border-border bg-white px-4 py-2.5 text-sm font-semibold text-muted transition hover:border-danger/30 hover:bg-danger/5 hover:text-danger"
+                  className="inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-border bg-white px-3 py-2 text-sm font-semibold text-muted hover:border-danger/30 hover:bg-danger/5 hover:text-danger"
                 >
                   ออกจากระบบ
                 </button>
               </form>
-            </nav>
+            </div>
           </div>
-        </header>
-        <main id="main-content" tabIndex={-1} className="motion-stack flex-1 pb-8">{children}</main>
-      </div>
+        )}
+      >
+        <div>
+          <header className="app-header border-b border-border bg-white lg:hidden">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-xs font-bold text-white" aria-hidden="true">
+                  TF
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">Traffy Track · เขตทวีวัฒนา</p>
+                  <p className="truncate text-xs text-muted">{session.displayName}</p>
+                </div>
+              </div>
+              <form action={logoutAction}>
+                <button type="submit" className="min-h-10 rounded-xl border border-border px-3 text-sm font-semibold text-muted">
+                  ออกจากระบบ
+                </button>
+              </form>
+            </div>
+            <nav aria-label="เมนูหลัก" className="overflow-x-auto px-4 pb-3 sm:px-6">
+              <div className="flex min-w-max gap-2">
+                {navigationItems.map((item) => (
+                  <PendingNavLink key={item.href} href={item.href} label={item.label} />
+                ))}
+              </div>
+            </nav>
+          </header>
+
+          <div className="px-4 py-5 sm:px-6 sm:py-6 xl:px-8">
+            <div className="mb-5 border-b border-border pb-5">
+              <h1 className="max-w-3xl text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-3xl">{title}</h1>
+              <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted">{description}</p>
+            </div>
+            <Suspense fallback={null}>
+              <AccessFeedback />
+              <ContextReturnLink />
+            </Suspense>
+            <DataFreshnessBanner status={systemStatus} showAlerts={session.role === "admin"} />
+            <main id="main-content" tabIndex={-1} className="min-w-0 pb-8 focus:outline-none">{children}</main>
+          </div>
+        </div>
+      </CollapsibleDesktopShell>
     </div>
   );
 }

@@ -1,116 +1,27 @@
 import { AppShell } from "@/components/app-shell";
+import { PasscodeAccessPanel } from "@/app/admin/passcode-access-panel";
+import { getCurrentSessionClaims } from "@/lib/auth";
+import { listPasscodeProfiles } from "@/lib/passcode-profiles";
 import { getAdminOverview } from "@/lib/admin";
 import { getRecentAuditEvents } from "@/lib/audit";
-import { AdminBackupPanel, AdminWipePanel } from "@/app/admin/admin-client";
+import { AdminBackupPanel, AdminOperationsPanel, AdminWipePanel } from "@/app/admin/admin-client";
+import { OperationalReadinessPanel } from "@/app/admin/readiness-panel";
+import { listOpenNotifications } from "@/lib/notifications";
+import { getSystemStatus } from "@/lib/system-status";
+import {
+  ESTIMATED_STORAGE_LIMIT_BYTES,
+  formatAdminBytes as formatBytes,
+  formatAdminDateTime as formatDateTime,
+  formatAdminImportStatus as formatImportStatus,
+  formatAdminNumber as formatNumber,
+  formatAuditAction,
+  getAdminImportStatusClass as getImportStatusClass,
+  getEnvironmentClass,
+  getStoragePercent,
+  getStorageTone
+} from "@/lib/admin/page-model";
 
 export const dynamic = "force-dynamic";
-
-const ESTIMATED_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("th-TH").format(value);
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
-}
-
-function getStoragePercent(bytes: number) {
-  return Math.min(100, Math.round((bytes / ESTIMATED_STORAGE_LIMIT_BYTES) * 100));
-}
-
-function getStorageTone(percent: number) {
-  if (percent >= 85) {
-    return {
-      arc: "from-success/70 via-warning to-danger",
-      needle: "bg-danger",
-      text: "text-danger",
-      label: "ใกล้เต็ม"
-    };
-  }
-
-  if (percent >= 60) {
-    return {
-      arc: "from-success/70 via-warning to-warning",
-      needle: "bg-warning",
-      text: "text-warning",
-      label: "เริ่มสูง"
-    };
-  }
-
-  return {
-    arc: "from-success via-success to-warning/70",
-    needle: "bg-brand",
-    text: "text-brand",
-    label: "ปกติ"
-  };
-}
-
-function formatImportStatus(status: string) {
-  switch (status) {
-    case "queued":
-      return "รอประมวลผล";
-    case "running":
-      return "กำลังประมวลผล";
-    case "failed":
-      return "ไม่สำเร็จ";
-    default:
-      return "สำเร็จ";
-  }
-}
-
-function getImportStatusClass(status: string) {
-  switch (status) {
-    case "queued":
-      return "bg-brand/10 text-brand";
-    case "running":
-      return "bg-warning/10 text-warning";
-    case "failed":
-      return "bg-danger/10 text-danger";
-    default:
-      return "bg-success/10 text-success";
-  }
-}
-
-function getEnvironmentClass(isProduction: boolean) {
-  return isProduction ? "bg-danger/10 text-danger" : "bg-brand/10 text-brand";
-}
-
-function formatAuditAction(action: string) {
-  const labels: Record<string, string> = {
-    "backup.export": "สร้าง Backup ZIP",
-    "system.wipe": "ล้างข้อมูลระบบ",
-    "import.queued": "เริ่มงานนำเข้า",
-    "import.completed": "นำเข้าเสร็จสิ้น",
-    "import.failed": "นำเข้าไม่สำเร็จ"
-  };
-
-  return labels[action] || action;
-}
 
 function StorageGauge({ bytes, objectCount }: { bytes: number; objectCount: number }) {
   const percent = getStoragePercent(bytes);
@@ -139,7 +50,14 @@ function StorageGauge({ bytes, objectCount }: { bytes: number; objectCount: numb
 }
 
 export default async function AdminPage() {
-  const [data, audit] = await Promise.all([getAdminOverview(), getRecentAuditEvents(50)]);
+  const [data, audit, session, passcodeProfiles, systemStatus, notifications] = await Promise.all([
+    getAdminOverview(),
+    getRecentAuditEvents(50),
+    getCurrentSessionClaims(),
+    listPasscodeProfiles(),
+    getSystemStatus(),
+    listOpenNotifications()
+  ]);
 
   return (
     <AppShell
@@ -147,18 +65,23 @@ export default async function AdminPage() {
       description="ตรวจสุขภาพฐานข้อมูลและ Storage สร้าง backup ZIP และล้างข้อมูลเมื่อจำเป็น"
     >
       {data.status === "missing_env" ? (
-        <section className="rounded-3xl border border-warning/20 bg-warning/10 p-6">
+        <section className="rounded-2xl border border-warning/20 bg-warning/10 p-6">
           <h2 className="text-xl font-bold text-warning">Supabase ยังไม่ถูกตั้งค่า</h2>
           <p className="mt-3 text-sm leading-6 text-warning">ต้องตั้งค่า Supabase admin env ก่อนจึงจะใช้หน้า admin ได้</p>
         </section>
       ) : data.status === "unavailable" ? (
-        <section className="rounded-3xl border border-danger/20 bg-danger/5 p-6">
+        <section className="rounded-2xl border border-danger/20 bg-danger/5 p-6">
           <h2 className="text-xl font-bold text-danger">Admin monitor ดึงข้อมูลไม่ได้ชั่วคราว</h2>
           <p className="mt-3 text-sm leading-6 text-danger">{data.message}</p>
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="rounded-3xl bg-white p-6 shadow-panel">
+          <OperationalReadinessPanel maintenanceEnabled={systemStatus.maintenanceEnabled} maintenanceMessage={systemStatus.maintenanceMessage} notifications={notifications} />
+          <PasscodeAccessPanel
+            currentProfileId={session?.identityId || null}
+            initialProfiles={passcodeProfiles}
+          />
+          <section className="rounded-2xl bg-white p-6 shadow-panel">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-ink">System health</h2>
@@ -215,7 +138,7 @@ export default async function AdminPage() {
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-panel">
+          <section className="rounded-2xl bg-white p-6 shadow-panel">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-ink">Operational attention</h2>
@@ -276,7 +199,7 @@ export default async function AdminPage() {
           </section>
 
           <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="rounded-2xl bg-white p-6 shadow-panel">
               <h2 className="text-xl font-bold text-ink">Database tables</h2>
               <div className="mt-4 overflow-hidden rounded-2xl border border-border">
                 <table className="w-full border-collapse text-left text-sm">
@@ -300,7 +223,7 @@ export default async function AdminPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-panel">
+            <section className="rounded-2xl bg-white p-6 shadow-panel">
               <h2 className="text-xl font-bold text-ink">Storage buckets</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1">
                 {data.storage.buckets.map((bucket) => (
@@ -323,10 +246,11 @@ export default async function AdminPage() {
             </section>
           </div>
 
+          <AdminOperationsPanel operations={data.operations} />
           <AdminBackupPanel />
           <AdminWipePanel isProduction={data.deployment.isProduction} environmentName={data.deployment.appEnvironment} />
 
-          <section className="rounded-3xl bg-white p-6 shadow-panel">
+          <section className="rounded-2xl bg-white p-6 shadow-panel">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-ink">Audit log</h2>
@@ -355,7 +279,13 @@ export default async function AdminPage() {
                         <tr key={event.id} className="motion-row">
                           <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDateTime(event.occurredAt)}</td>
                           <td className="px-4 py-3 font-semibold text-ink">
-                            {event.actorRole === "admin" ? "ผู้ดูแลระบบ" : event.actorRole === "operator" ? "เจ้าหน้าที่" : "ระบบ"}
+                            {typeof event.metadata.actorDisplayName === "string"
+                              ? event.metadata.actorDisplayName
+                              : event.actorRole === "admin"
+                                ? "ผู้ดูแลระบบ"
+                                : event.actorRole === "operator"
+                                  ? "เจ้าหน้าที่"
+                                  : "ระบบ"}
                           </td>
                           <td className="px-4 py-3 text-ink">{formatAuditAction(event.action)}</td>
                           <td className="max-w-[280px] truncate px-4 py-3 font-mono text-xs text-muted" title={event.resourceId || event.resourceType}>

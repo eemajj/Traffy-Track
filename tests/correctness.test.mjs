@@ -9,6 +9,7 @@ import { parseCoordinates } from "../lib/coordinates.ts";
 import { createSessionCookieValue, getSessionClaims, verifySessionCookieValue } from "../lib/session.ts";
 import { getAnalyticsPeriodDays } from "../lib/analytics-period.ts";
 import { buildPendingStatesOrFilter } from "../lib/tickets.ts";
+import { compareCaseListItems, getCaseSortField, normalizeCaseListSort } from "../lib/case-sort.ts";
 import { getEvidenceWorkflowState, summarizeEvidenceDepartments } from "../lib/evidence-workflow.ts";
 import {
   getCsvRowValidationIssues,
@@ -87,6 +88,29 @@ test("complaint map owns and cleans up its Leaflet instance", async () => {
   assert.match(source, /bindPopup\(\(\) => createPopupContent\(point\)\)/);
 });
 
+test("case registry supports received and updated date sorting in both directions", () => {
+  const olderReceivedButNewerUpdated = {
+    ticket_id: "A",
+    timestamp: "2026-07-01T00:00:00.000Z",
+    last_activity: "2026-07-10T00:00:00.000Z"
+  };
+  const newerReceivedButOlderUpdated = {
+    ticket_id: "B",
+    timestamp: "2026-07-05T00:00:00.000Z",
+    last_activity: "2026-07-08T00:00:00.000Z"
+  };
+
+  assert.equal(normalizeCaseListSort(undefined), "updated-desc");
+  assert.equal(normalizeCaseListSort("invalid"), "updated-desc");
+  assert.equal(getCaseSortField("received-asc"), "timestamp");
+  assert.equal(getCaseSortField("updated-desc"), "last_activity");
+  assert.ok(compareCaseListItems(olderReceivedButNewerUpdated, newerReceivedButOlderUpdated, "received-asc") < 0);
+  assert.ok(compareCaseListItems(olderReceivedButNewerUpdated, newerReceivedButOlderUpdated, "received-desc") > 0);
+  assert.ok(compareCaseListItems(olderReceivedButNewerUpdated, newerReceivedButOlderUpdated, "updated-asc") > 0);
+  assert.ok(compareCaseListItems(olderReceivedButNewerUpdated, newerReceivedButOlderUpdated, "updated-desc") < 0);
+  assert.ok(compareCaseListItems({ ...olderReceivedButNewerUpdated, timestamp: null }, newerReceivedButOlderUpdated, "received-asc") > 0);
+});
+
 test("Bangkok report dates do not fall back to the previous UTC day", () => {
   const beforeBangkokMorning = new Date("2026-07-10T18:30:00.000Z");
 
@@ -114,6 +138,22 @@ test("external photo URLs only allow canonical HTTPS links", () => {
   assert.equal(getSafeHttpsUrl("http://images.example.test/photo.jpg"), null);
   assert.equal(getSafeHttpsUrl("https://user:secret@images.example.test/photo.jpg"), null);
   assert.equal(getSafeHttpsUrl("not a url"), null);
+  assert.equal(
+    getSafeHttpsUrl(
+      "https://storage.googleapis.com/traffy_public_bucket/{https://storage.googleapis.com/traffy_public_bucket/attachment/2026-07/6f6db269ebc343d4143a941fe67b26e8.jpeg}"
+    ),
+    "https://storage.googleapis.com/traffy_public_bucket/attachment/2026-07/6f6db269ebc343d4143a941fe67b26e8.jpeg"
+  );
+  assert.equal(
+    getSafeHttpsUrl(
+      "https://storage.googleapis.com/traffy_public_bucket/%7Bhttps://storage.googleapis.com/traffy_public_bucket/attachment/2026-07/6f6db269ebc343d4143a941fe67b26e8.jpeg%7D"
+    ),
+    "https://storage.googleapis.com/traffy_public_bucket/attachment/2026-07/6f6db269ebc343d4143a941fe67b26e8.jpeg"
+  );
+  assert.equal(
+    getSafeHttpsUrl("https://storage.googleapis.com/traffy_public_bucket/{https://evil.example/photo.jpg}"),
+    null
+  );
 });
 
 test("CityData longitude,latitude coordinates normalize to latitude,longitude", () => {

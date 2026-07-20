@@ -7,20 +7,11 @@ import { IMPORT_BUCKET } from "@/lib/storage";
 import { parseCoordinates } from "@/lib/coordinates";
 import { analyzeDataQualitySignals, createEmptyDataQualitySignals } from "@/lib/data-quality";
 import { getTicketFieldChanges, preserveMissingOptionalFields } from "@/lib/import/integrity";
+import { trimPartialCsvToCompleteRecords } from "@/lib/import/preview-core";
 import type { ExistingTicketSnapshot } from "@/lib/import/types";
 
 const PREVIEW_BYTES = 512 * 1024;
 const PREVIEW_MAX_ROWS = 300;
-
-function trimToCompleteCsvLines(text: string) {
-  const lastNewlineIndex = Math.max(text.lastIndexOf("\n"), text.lastIndexOf("\r"));
-
-  if (lastNewlineIndex <= 0) {
-    return text;
-  }
-
-  return text.slice(0, lastNewlineIndex);
-}
 
 function isInvalidTimestamp(value: string | undefined) {
   const normalized = (value || "").trim();
@@ -77,7 +68,7 @@ export async function previewImportCsvFromStorage(input: {
   const bytesRead = previewBuffer.byteLength;
   const rawPreviewText = new TextDecoder("utf-8").decode(previewBuffer);
   const isPartialPreview = bytesRead >= PREVIEW_BYTES && (!input.fileSize || bytesRead < input.fileSize);
-  const previewText = isPartialPreview ? trimToCompleteCsvLines(rawPreviewText) : rawPreviewText;
+  const previewText = isPartialPreview ? trimPartialCsvToCompleteRecords(rawPreviewText) : rawPreviewText;
   const parsed = Papa.parse<Record<string, string>>(previewText, {
     header: true,
     skipEmptyLines: "greedy"

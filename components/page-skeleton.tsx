@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 type PageSkeletonProps = {
   title: string;
   description: string;
-  variant?: "dashboard" | "list" | "detail";
+  variant?: "dashboard" | "traffy-dashboard" | "list" | "detail";
 };
 
 function SkeletonBlock({ className }: { className: string }) {
@@ -12,7 +12,7 @@ function SkeletonBlock({ className }: { className: string }) {
 
 function MetricSkeleton() {
   return (
-    <section className="rounded-[28px] border border-border/80 bg-white p-6 shadow-panel">
+    <section className="rounded-2xl border border-border/80 bg-white p-6 shadow-panel">
       <SkeletonBlock className="h-4 w-28" />
       <SkeletonBlock className="mt-4 h-8 w-16" />
     </section>
@@ -23,7 +23,7 @@ function ListSkeleton() {
   return (
     <div className="space-y-4">
       {Array.from({ length: 5 }).map((_, index) => (
-        <article key={index} className="rounded-3xl border border-border/80 bg-white p-5 shadow-panel">
+        <article key={index} className="rounded-2xl border border-border/80 bg-white p-5 shadow-panel">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex-1">
               <SkeletonBlock className="h-4 w-32" />
@@ -45,7 +45,7 @@ function ListSkeleton() {
 function DetailSkeleton() {
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl bg-white p-6 shadow-panel">
+      <section className="rounded-2xl bg-white p-6 shadow-panel">
         <SkeletonBlock className="h-4 w-36" />
         <SkeletonBlock className="mt-4 h-8 w-3/4" />
         <SkeletonBlock className="mt-4 h-4 w-1/2" />
@@ -63,6 +63,22 @@ function DetailSkeleton() {
   );
 }
 
+function TraffyDashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <SkeletonBlock className="h-32" />
+      <SkeletonBlock className="h-40 bg-brand/15" />
+      <section className="overflow-hidden rounded-2xl border border-border bg-white">
+        <div className="p-5 sm:p-6"><SkeletonBlock className="h-6 w-48" /><SkeletonBlock className="mt-3 h-4 w-72 max-w-full" /></div>
+        <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 12 }).map((_, index) => <SkeletonBlock key={index} className="h-36 rounded-none" />)}
+        </div>
+      </section>
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]"><SkeletonBlock className="h-96" /><SkeletonBlock className="h-96" /></div>
+    </div>
+  );
+}
+
 export function PageSkeleton({ title, description, variant = "dashboard" }: PageSkeletonProps) {
   return (
     <AppShell title={title} description={description}>
@@ -72,7 +88,9 @@ export function PageSkeleton({ title, description, variant = "dashboard" }: Page
             <MetricSkeleton key={index} />
           ))}
         </div>
-        {variant === "detail" ? (
+        {variant === "traffy-dashboard" ? (
+          <TraffyDashboardSkeleton />
+        ) : variant === "detail" ? (
           <DetailSkeleton />
         ) : variant === "list" ? (
           <ListSkeleton />

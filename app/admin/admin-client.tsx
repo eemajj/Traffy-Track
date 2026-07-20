@@ -11,6 +11,28 @@ type BackupResult = {
 
 type WipeMode = "reports" | "all";
 
+type OperationsSnapshot = {
+  outbox: {
+    pending: number;
+    processing: number;
+    failed: number;
+    dead: number;
+    staleLeases: number;
+    oldestActionableAt: string | null;
+    oldestDeadAt: string | null;
+    maxAttempts: number;
+  };
+  imports: {
+    active: number;
+    failed: number;
+    staleActive: number;
+    staleQueued: number;
+    staleRunning: number;
+    oldestActiveAt: string | null;
+    oldestHeartbeatAt: string | null;
+  };
+};
+
 function formatBytes(bytes: number) {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -31,6 +53,126 @@ function formatBytes(bytes: number) {
 function parseContentDispositionFilename(value: string | null) {
   const match = value?.match(/filename="([^"]+)"/);
   return match?.[1] || null;
+}
+
+export function AdminOperationsPanel({ operations }: { operations: OperationsSnapshot }) {
+  const [pendingAction, setPendingAction] = useState<"maintenance" | "retry" | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const retryable = operations.outbox.failed + operations.outbox.dead;
+
+  async function runAction(action: "run-maintenance" | "retry-storage-queue") {
+    setPendingAction(action === "run-maintenance" ? "maintenance" : "retry");
+    setMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/operations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, confirmation })
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        status?: string;
+        retried?: number;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "ดำเนินการคิวงานไม่สำเร็จ");
+      }
+
+      setMessage(
+        action === "retry-storage-queue"
+          ? `นำงานกลับเข้าคิวแล้ว ${payload?.retried || 0} รายการ`
+          : "รัน maintenance ครบทุกขั้นตอนแล้ว"
+      );
+      setConfirmation("");
+      window.setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "ดำเนินการคิวงานไม่สำเร็จ");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl bg-white p-6 shadow-panel" aria-labelledby="operations-title">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 id="operations-title" className="text-xl font-bold text-ink">Operations queue</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+            ตรวจงานลบไฟล์ที่รอทำ งานที่หยุดหลัง retry ครบ และ import ที่ heartbeat ขาด ก่อนสั่ง maintenance ด้วยตนเอง
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => runAction("run-maintenance")}
+          disabled={pendingAction !== null}
+          className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {pendingAction === "maintenance" ? "กำลังรัน maintenance..." : "รัน maintenance ตอนนี้"}
+        </button>
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl bg-surface px-4 py-3">
+          <dt className="text-xs font-semibold text-muted">Storage รอดำเนินการ</dt>
+          <dd className="mt-1 text-2xl font-semibold text-ink">{operations.outbox.pending}</dd>
+        </div>
+        <div className="rounded-2xl bg-surface px-4 py-3">
+          <dt className="text-xs font-semibold text-muted">กำลังประมวลผล</dt>
+          <dd className="mt-1 text-2xl font-semibold text-ink">{operations.outbox.processing}</dd>
+        </div>
+        <div className="rounded-2xl bg-danger/5 px-4 py-3">
+          <dt className="text-xs font-semibold text-danger">Failed / dead-letter</dt>
+          <dd className="mt-1 text-2xl font-semibold text-danger">{retryable}</dd>
+        </div>
+        <div className="rounded-2xl bg-warning/10 px-4 py-3">
+          <dt className="text-xs font-semibold text-warning">Import ขาด heartbeat</dt>
+          <dd className="mt-1 text-2xl font-semibold text-warning">{operations.imports.staleActive}</dd>
+        </div>
+      </dl>
+
+      {retryable > 0 ? (
+        <div className="mt-5 rounded-2xl border border-danger/20 bg-danger/5 p-4">
+          <label htmlFor="queue-retry-confirmation" className="text-sm font-semibold text-danger">
+            ยืนยันการนำ failed/dead-letter กลับเข้าคิว
+          </label>
+          <p id="queue-retry-help" className="mt-1 text-sm leading-6 text-danger/90">
+            ตรวจสาเหตุใน audit/log ก่อน แล้วพิมพ์ <code className="rounded bg-white px-1.5 py-0.5 font-mono">RETRY STORAGE QUEUE</code>
+          </p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+            <input
+              id="queue-retry-confirmation"
+              aria-describedby="queue-retry-help"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-h-11 flex-1 rounded-2xl border border-danger/25 bg-white px-4 text-sm text-ink outline-none focus:border-danger focus:ring-4 focus:ring-danger/10"
+            />
+            <button
+              type="button"
+              onClick={() => runAction("retry-storage-queue")}
+              disabled={pendingAction !== null || confirmation !== "RETRY STORAGE QUEUE"}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-danger px-5 py-3 text-sm font-semibold text-white hover:bg-danger/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {pendingAction === "retry" ? "กำลังนำกลับเข้าคิว..." : `Retry ${retryable} รายการ`}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-5 rounded-2xl bg-success/10 px-4 py-3 text-sm font-semibold text-success">
+          ไม่มี failed หรือ dead-letter ที่ต้องดำเนินการ
+        </p>
+      )}
+
+      {message ? <p role="status" className="mt-4 text-sm font-semibold text-success">{message}</p> : null}
+      {errorMessage ? <p role="alert" className="mt-4 text-sm font-semibold text-danger">{errorMessage}</p> : null}
+    </section>
+  );
 }
 
 export function AdminBackupPanel() {
@@ -78,7 +220,7 @@ export function AdminBackupPanel() {
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 shadow-panel">
+    <section className="rounded-2xl bg-white p-6 shadow-panel">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h2 className="text-xl font-bold text-ink">Backup export</h2>
@@ -175,7 +317,7 @@ export function AdminWipePanel({
   }
 
   return (
-    <section className="rounded-3xl border border-danger/20 bg-danger/5 p-6">
+    <section className="rounded-2xl border border-danger/20 bg-danger/5 p-6">
       <h2 className="text-xl font-bold text-danger">Wipe data</h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-danger/90">
         ใช้หลังจาก backup สำเร็จแล้วเท่านั้น โหมดล้างรายงานจะลบ report batches, รายการฝ่าย, รายการเคสในรายงาน และไฟล์หลักฐาน

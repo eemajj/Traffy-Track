@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 import { analyzeDataQualitySignals } from "../lib/data-quality.ts";
 
@@ -73,4 +74,19 @@ test("attention hints expose transparent keyword matches without mutating input"
   assert.equal(signals.reviewAttentionCount, 1);
   assert.equal(signals.attentionExamples[0].label, "ควรเร่งตรวจสอบ");
   assert.deepEqual(input, before);
+});
+
+test("invalid imports expose a full downloadable correction artifact", async () => {
+  const [generator, route, client] = await Promise.all([
+    readFile(new URL("../lib/import/correction.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/import/correction/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/import/import-preview.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(generator, /getCsvRowValidationIssues/);
+  assert.match(generator, /duplicate_ticket_id/);
+  assert.match(generator, /suggested_action/);
+  assert.match(route, /requireApiSession/);
+  assert.match(route, /X-Correction-Issue-Count/);
+  assert.match(client, /ดาวน์โหลดรายการที่ต้องแก้/);
 });

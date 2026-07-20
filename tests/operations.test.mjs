@@ -60,7 +60,7 @@ test("temporary bucket limits stay within the Supabase Free Tier ceiling", () =>
 });
 
 test("system wipe deletes database rows before delegating evidence deletion to the outbox", async () => {
-  const adminSource = await readFile(new URL("../lib/admin.ts", import.meta.url), "utf8");
+  const adminSource = await readFile(new URL("../lib/admin/runtime.ts", import.meta.url), "utf8");
   const wipeSource = adminSource.slice(adminSource.indexOf("export async function wipeSystemData"));
   const databaseDeleteIndex = wipeSource.indexOf('await deleteAllRows("report_batches", "id")');
   const outboxIndex = wipeSource.indexOf('.from("storage_deletion_outbox")');
@@ -102,11 +102,7 @@ test("maintenance isolates stages so temporary cleanup still runs after an outbo
 });
 
 test("stored import sources are only removed after a terminal database status is confirmed", async () => {
-  const importSource = await readFile(new URL("../lib/import/process.ts", import.meta.url), "utf8");
-  const storageImport = importSource.slice(
-    importSource.indexOf("export async function processImportCsvFromStorage"),
-    importSource.indexOf("export async function processImportCsvText")
-  );
+  const storageImport = await readFile(new URL("../lib/import/storage-service.ts", import.meta.url), "utf8");
   const statusRead = storageImport.indexOf('.select("status")');
   const remove = storageImport.indexOf(".remove([input.path])");
 
@@ -116,19 +112,24 @@ test("stored import sources are only removed after a terminal database status is
 });
 
 test("import processing refreshes heartbeat at bounded processing checkpoints", async () => {
-  const importSource = await readFile(new URL("../lib/import/process.ts", import.meta.url), "utf8");
+  const [importSource, jobService, applyService] = await Promise.all([
+    readFile(new URL("../lib/import/process.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/import/job-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/import/apply-service.ts", import.meta.url), "utf8")
+  ]);
   const processSource = importSource.slice(
     importSource.indexOf("export async function processImportCsvText")
   );
-  const heartbeatCalls = processSource.match(/await heartbeatImportBatch\(supabase, importBatchId\)/g) || [];
+  const heartbeatCalls = processSource.match(/await heartbeat\(importBatchId/g) || [];
 
-  assert.match(importSource, /rpc\("heartbeat_import_batch"/);
-  assert.match(importSource, /result\.data !== true/);
+  assert.match(jobService, /rpc\("heartbeat_import_batch"/);
+  assert.match(jobService, /result\.data !== true/);
   assert.match(processSource, /ticketIndex % IMPORT_HEARTBEAT_ROW_INTERVAL === 0/);
   assert.ok(heartbeatCalls.length >= 3, "long-running import phases do not refresh heartbeat");
   assert.ok(
-    processSource.indexOf("await heartbeatImportBatch(supabase, importBatchId)")
-      < processSource.indexOf('supabase.rpc("apply_import_batch"'),
+    processSource.lastIndexOf("await heartbeat(importBatchId")
+      < processSource.indexOf("options?.apply || applyImportBatchTransaction"),
     "import is applied without a final lease check"
   );
+  assert.match(applyService, /rpc\("apply_import_batch"/);
 });

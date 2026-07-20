@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { requireApiRole } from "@/lib/api-auth";
+import { resolveApiServiceResult } from "@/lib/api-service-result";
 import { previewSystemWipe, wipeSystemData } from "@/lib/admin";
 import { recordAuditEvent } from "@/lib/audit";
+import { buildPrivilegedFailureAudit, buildPrivilegedSuccessAudit } from "@/lib/privileged-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,16 +22,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const mode = normalizeMode(url.searchParams.get("mode"));
   const preview = await previewSystemWipe(mode);
-
-  if (preview.status === "missing_env") {
-    return NextResponse.json({ error: "ระบบยังไม่ได้ตั้งค่า Supabase" }, { status: 500 });
+  const resolution = resolveApiServiceResult(preview, { unavailableMessage: "โหลดตัวอย่างการล้างข้อมูลไม่สำเร็จ" });
+  if (!resolution.ok) {
+    return NextResponse.json(resolution.error.body, { status: resolution.error.status });
   }
 
-  if (preview.status === "unavailable") {
-    return NextResponse.json({ error: preview.message }, { status: 500 });
-  }
-
-  return NextResponse.json(preview, {
+  return NextResponse.json(resolution.value, {
     headers: {
       "Cache-Control": "no-store"
     }
@@ -52,12 +50,12 @@ export async function POST(request: Request) {
       mode: normalizeMode(payload.mode),
       confirmation: payload.confirmation || ""
     });
-    await recordAuditEvent({
+    await recordAuditEvent(buildPrivilegedSuccessAudit({
       action: "system.wipe",
       resourceType: "system",
       resourceId: normalizeMode(payload.mode),
       metadata: { mode: normalizeMode(payload.mode) }
-    });
+    }));
 
     return NextResponse.json(result, {
       headers: {
@@ -65,13 +63,12 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    await recordAuditEvent({
+    await recordAuditEvent(buildPrivilegedFailureAudit({
       action: "system.wipe",
       resourceType: "system",
       resourceId: "attempt",
-      outcome: "failure",
-      metadata: { message: error instanceof Error ? error.message : "unknown error" }
-    });
+      error
+    }));
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "ล้างข้อมูลระบบไม่สำเร็จ"

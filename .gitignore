@@ -25,3 +25,10 @@ supabase/.temp
 .impeccable
 .vercel
 .env*
+.backups/
+.backup-keys/
+.npm/
+.supabase/
+output/
+tmp/
+summarizereport/

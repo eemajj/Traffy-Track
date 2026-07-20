@@ -1,8 +1,9 @@
-import { unstable_noStore as noStore } from "next/cache";
+import { unstable_cache } from "next/cache";
 
 import { hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { buildPendingStatesOrFilter, isClosedTicketState } from "@/lib/tickets";
+import type { WorkflowActionItem } from "@/lib/workflow";
 
 type LatestImportBatch = {
   id: string;
@@ -85,6 +86,7 @@ export type DashboardData =
       departmentSummary: DepartmentSummaryRow[];
       unassignedTickets: UnassignedTicketRow[];
       recentChanges: RecentTicketChange[];
+      actionCenter: WorkflowActionItem[];
     };
 
 function normalizeTicketRelation(relation: TicketRelation | TicketRelation[] | null) {
@@ -169,14 +171,12 @@ function buildRecentTicketChanges(rows: RecentChangeRow[]) {
   return Array.from(grouped.values()).slice(0, 8);
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseAdminEnv()) {
     return { status: "missing_env" };
   }
 
   try {
-    noStore();
-
     const supabase = createSupabaseAdminClient();
     const pendingFilter = buildPendingStatesOrFilter();
 
@@ -201,7 +201,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       unassignedTicketsResult,
       actionableChangeCountResult,
       reopenedTicketCountResult,
-      recentChangesResult
+      recentChangesResult,
+      actionCenterResult
     ] = await Promise.all([
       supabase
         .from("tickets")
@@ -247,7 +248,8 @@ export async function getDashboardData(): Promise<DashboardData> {
             .or(pendingFilter, { referencedTable: "tickets" })
             .order("detected_at", { ascending: false })
             .limit(120)
-        : Promise.resolve({ data: [], error: null })
+        : Promise.resolve({ data: [], error: null }),
+      supabase.rpc("workflow_action_center", {})
     ]);
 
     if (pendingCountResult.error) {
@@ -255,7 +257,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     }
 
     if (unassignedCountResult.error) {
-      throw new Error(`นับจำนวนเรื่องที่รอจัดฝ่ายไม่สำเร็จ: ${unassignedCountResult.error.message}`);
+      throw new Error(`นับจำนวนเรื่องที่ไม่มีฝ่ายใน CityData ไม่สำเร็จ: ${unassignedCountResult.error.message}`);
     }
 
     if (departmentSummaryResult.error) {
@@ -263,7 +265,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     }
 
     if (unassignedTicketsResult.error) {
-      throw new Error(`โหลดรายการเรื่องที่รอจัดฝ่ายไม่สำเร็จ: ${unassignedTicketsResult.error.message}`);
+      throw new Error(`โหลดรายการเรื่องที่ไม่มีฝ่ายใน CityData ไม่สำเร็จ: ${unassignedTicketsResult.error.message}`);
     }
 
     if (actionableChangeCountResult.error) {
@@ -276,6 +278,10 @@ export async function getDashboardData(): Promise<DashboardData> {
 
     if (recentChangesResult.error) {
       throw new Error(`โหลดรายการเปลี่ยนแปลงล่าสุดไม่สำเร็จ: ${recentChangesResult.error.message}`);
+    }
+
+    if (actionCenterResult.error) {
+      throw new Error(`โหลดศูนย์งานวันนี้ไม่สำเร็จ: ${actionCenterResult.error.message}`);
     }
 
     const recentRows = ((recentChangesResult.data as RecentChangeRow[] | null) || []).filter((change) => {
@@ -292,7 +298,24 @@ export async function getDashboardData(): Promise<DashboardData> {
       actionableChangeCount: actionableChangeCountResult.count || 0,
       departmentSummary: (departmentSummaryResult.data as DepartmentSummaryRow[] | null) || [],
       unassignedTickets: (unassignedTicketsResult.data as UnassignedTicketRow[] | null) || [],
-      recentChanges: buildRecentTicketChanges(recentRows)
+      recentChanges: buildRecentTicketChanges(recentRows),
+      actionCenter: ((actionCenterResult.data || []) as Array<{
+        item_type: "report"; resource_id: string; title: string; detail: string;
+        workflow_status: string; owner: string | null; due_date: string | null; is_overdue: boolean;
+        priority: number; href: string; created_at: string;
+      }>).map((row) => ({
+        itemType: row.item_type,
+        resourceId: row.resource_id,
+        title: row.title,
+        detail: row.detail,
+        workflowStatus: row.workflow_status,
+        owner: row.owner,
+        dueDate: row.due_date,
+        isOverdue: row.is_overdue,
+        priority: row.priority,
+        href: row.href,
+        createdAt: row.created_at
+      }))
     };
   } catch (error) {
     return {
@@ -300,4 +323,18 @@ export async function getDashboardData(): Promise<DashboardData> {
       message: error instanceof Error ? error.message : "ข้อมูลภาพรวมระบบยังไม่พร้อมใช้งานชั่วคราว"
     };
   }
+}
+
+export const DASHBOARD_CACHE_TAG = "dashboard-data";
+
+// A short shared cache absorbs bursts (for example, everyone opening the
+// dashboard during a presentation) while keeping operational data near-real-time.
+const getCachedDashboardData = unstable_cache(
+  loadDashboardData,
+  [DASHBOARD_CACHE_TAG],
+  { revalidate: 15, tags: [DASHBOARD_CACHE_TAG] }
+);
+
+export async function getDashboardData(): Promise<DashboardData> {
+  return getCachedDashboardData();
 }

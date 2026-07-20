@@ -10,9 +10,12 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
+    "test:import-worker": "node --test tests/import-worker.test.mjs",
+    "check:release-hygiene": "node scripts/check-release-hygiene.mjs",
     "predeploy": "node scripts/predeploy-check.mjs",
     "preflight:production:backup": "node scripts/production-preflight-backup.mjs",
     "verify:production-db": "node scripts/check-production-db-contract.mjs",
+    "verify:production-import-v2": "node scripts/check-production-import-v2-contract.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {

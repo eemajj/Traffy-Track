@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 const checks = [
+  ["npm", ["run", "check:release-hygiene"]],
   ["npm", ["test"]],
   ["npm", ["run", "typecheck"]],
   ["npm", ["run", "lint"]],

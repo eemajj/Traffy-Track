@@ -7,6 +7,7 @@ import { MouseEvent, useEffect, useState } from "react";
 type PendingNavLinkProps = {
   href: string;
   label: string;
+  layout?: "horizontal" | "sidebar";
 };
 
 function shouldIgnoreClick(event: MouseEvent<HTMLAnchorElement>) {
@@ -43,13 +44,14 @@ export function NavigationProgress() {
   );
 }
 
-export function PendingNavLink({ href, label }: PendingNavLinkProps) {
+export function PendingNavLink({ href, label, layout = "horizontal" }: PendingNavLinkProps) {
   const pathname = usePathname();
   const isActive = pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 
   return (
     <Link
       href={href}
+      data-layout={layout}
       aria-current={isActive ? "page" : undefined}
       onClick={(event) => {
         if (shouldIgnoreClick(event) || isActive) {
@@ -58,9 +60,15 @@ export function PendingNavLink({ href, label }: PendingNavLinkProps) {
 
         window.dispatchEvent(new Event("app:navigation-start"));
       }}
-      className={`nav-pill inline-flex min-h-11 items-center rounded-2xl border px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-brand/35 hover:bg-white hover:text-brand hover:shadow-hover ${
-        isActive ? "border-brand/25 bg-brand/10 text-brand" : "border-border bg-surface text-ink"
-      }`}
+      className={
+        layout === "sidebar"
+          ? `nav-pill inline-flex min-h-11 w-full items-center rounded-xl px-3.5 py-2.5 text-sm font-semibold ${
+              isActive ? "bg-brand text-white" : "text-muted hover:bg-surface hover:text-ink"
+            }`
+          : `nav-pill inline-flex min-h-11 items-center rounded-xl border px-4 py-2.5 text-sm font-semibold ${
+              isActive ? "border-brand/25 bg-brand/10 text-brand" : "border-border bg-white text-ink hover:border-brand/35 hover:text-brand"
+            }`
+      }
     >
       {label}
     </Link>

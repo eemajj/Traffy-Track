@@ -27,6 +27,9 @@ const evidenceRouteUrl = new URL(
   import.meta.url
 );
 const reportLibraryUrl = new URL("../lib/report.ts", import.meta.url);
+const evidenceMutationServiceUrl = new URL("../lib/report/evidence-mutation-service.ts", import.meta.url);
+const evidenceTransferOrchestratorUrl = new URL("../lib/report/evidence-transfer-orchestrator.ts", import.meta.url);
+const evidenceTransferServiceUrl = new URL("../lib/report/evidence-transfer-service.ts", import.meta.url);
 const evidenceHttpHarnessUrl = new URL("../scripts/check-evidence-http.mjs", import.meta.url);
 const evidenceRestoreMigrationUrl = new URL(
   "../supabase/migrations/20260714153000_evidence_restore_rpc.sql",
@@ -130,10 +133,28 @@ test("evidence withdrawal binds destructive action to an exact version and suppo
   assert.match(sql, /revoke execute on function public\.withdraw_report_evidence\(/);
 });
 
+test("evidence withdrawal has a deletion grace period and exact-version undo", async () => {
+  const [sql, route, checklist] = await Promise.all([
+    readFile(new URL("../supabase/migrations/20260715120000_evidence_withdraw_grace_undo.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/report/[batchId]/evidence/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/report/[batchId]/report-department-checklist.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(sql, /interval '15 minutes'/);
+  assert.match(sql, /create or replace function public\.undo_report_evidence_withdrawal/);
+  assert.match(sql, /v_outbox\.status <> 'pending'/);
+  assert.match(sql, /delete from public\.storage_deletion_outbox/);
+  assert.match(route, /evidence\.withdrawal_undone/);
+  assert.match(checklist, /Undo การถอน/);
+});
+
 test("evidence API validates version ids and reports auto-approval from the requested action only", async () => {
-  const [route, reportLibrary] = await Promise.all([
+  const [route, reportLibrary, evidenceMutationService, evidenceTransferOrchestrator, evidenceTransferService] = await Promise.all([
     readFile(evidenceRouteUrl, "utf8"),
-    readFile(reportLibraryUrl, "utf8")
+    readFile(reportLibraryUrl, "utf8"),
+    readFile(evidenceMutationServiceUrl, "utf8"),
+    readFile(evidenceTransferOrchestratorUrl, "utf8"),
+    readFile(evidenceTransferServiceUrl, "utf8")
   ]);
 
   assert.match(route, /isEvidenceVersionId\(evidenceVersionId\)/);
@@ -141,8 +162,11 @@ test("evidence API validates version ids and reports auto-approval from the requ
   assert.match(route, /autoApproved: didAutoApprove/);
   assert.match(route, /evidence\.upload_completion_retried/);
   assert.match(route, /evidence\.withdrawal_retried/);
-  assert.match(reportLibrary, /loadReportEvidenceDepartment[\s\S]+isCurrentVersion:/);
-  assert.match(reportLibrary, /withdraw_report_evidence_v2/);
+  assert.match(reportLibrary, /evidence-transfer-service/);
+  assert.match(evidenceTransferOrchestrator, /loadProjection[\s\S]+isCurrentVersion:/);
+  assert.match(evidenceTransferService, /attach_report_evidence_version/);
+  assert.match(reportLibrary, /evidence-mutation-service/);
+  assert.match(evidenceMutationService, /withdraw_report_evidence_v2/);
 });
 
 test("evidence HTTP QA harness is staging-only, covers release blockers, and always cleans up", async () => {

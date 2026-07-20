@@ -18,7 +18,7 @@ const TABLES = [
 ] as const;
 
 export async function GET() {
-  const unauthorized = await requireApiSession();
+  const unauthorized = await requireApiSession("admin:manage");
   if (unauthorized) {
     return unauthorized;
   }

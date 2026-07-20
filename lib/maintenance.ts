@@ -75,6 +75,11 @@ export type StaleImportRecoverySummary = {
   importBatchIds: string[];
 };
 
+export type StorageDeletionRetrySummary = {
+  retried: number;
+  jobIds: string[];
+};
+
 export async function getOperationsHealth(
   supabase: StorageClient
 ): Promise<OperationsHealthSnapshot> {
@@ -93,6 +98,49 @@ export async function recoverStaleImportJobs(
     throw new Error(`กู้สถานะงานนำเข้าที่ค้างไม่สำเร็จ: ${result.error?.message || "ไม่พบข้อมูล"}`);
   }
   return result.data as StaleImportRecoverySummary;
+}
+
+export async function retryFailedStorageDeletionJobs(
+  supabase: StorageClient
+): Promise<StorageDeletionRetrySummary> {
+  const failedJobs = await supabase
+    .from("storage_deletion_outbox")
+    .select("id")
+    .in("status", ["failed", "dead"])
+    .order("requested_at", { ascending: true })
+    .limit(500);
+
+  if (failedJobs.error) {
+    throw new Error(`โหลดงานลบไฟล์ที่ต้อง retry ไม่สำเร็จ: ${failedJobs.error.message}`);
+  }
+
+  const jobIds = (failedJobs.data || []).map((job) => String(job.id));
+  if (jobIds.length === 0) {
+    return { retried: 0, jobIds: [] };
+  }
+
+  const retryResult = await supabase
+    .from("storage_deletion_outbox")
+    .update({
+      status: "pending",
+      attempts: 0,
+      next_attempt_at: new Date().toISOString(),
+      lease_token: null,
+      locked_until: null,
+      last_error: null,
+      completed_at: null,
+      updated_at: new Date().toISOString()
+    })
+    .in("id", jobIds)
+    .in("status", ["failed", "dead"])
+    .select("id");
+
+  if (retryResult.error) {
+    throw new Error(`นำงานลบไฟล์กลับเข้าคิวไม่สำเร็จ: ${retryResult.error.message}`);
+  }
+
+  const retriedIds = (retryResult.data || []).map((job) => String(job.id));
+  return { retried: retriedIds.length, jobIds: retriedIds };
 }
 
 async function listExpiredStorageObjects(
