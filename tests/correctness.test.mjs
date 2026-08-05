@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { dedupeTicketsById } from "../lib/import/dedupe.ts";
+import { deriveDepartmentList } from "../lib/import/normalize.ts";
 import { getBangkokCurrentMonthRange, getBangkokTodayValue } from "../lib/report-date.ts";
 import { getSafeHttpsUrl } from "../lib/safe-url.ts";
 import { parseCoordinates } from "../lib/coordinates.ts";
@@ -61,6 +62,20 @@ function csvRow(overrides = {}) {
     ...overrides
   };
 }
+
+test("department derivation filters out non-district external departments", () => {
+  const orgList = [
+    "กรุงเทพมหานคร",
+    "เขตทวีวัฒนา",
+    "ฝ่ายโยธา เขตทวีวัฒนา",
+    "ฝ่ายเทศกิจ เขตทวีวัฒนา",
+    "ฝ่ายเก็บขนมูลฝอย สยฝ. สสล.",
+    "ฝ่ายจัดการยานพาหนะ สยฝ. สสล.",
+    "ฝ่ายเทศกิจ เขตบางแค"
+  ];
+  const derived = deriveDepartmentList(orgList);
+  assert.deepEqual(derived, ["ฝ่ายโยธา เขตทวีวัฒนา", "ฝ่ายเทศกิจ เขตทวีวัฒนา"]);
+});
 
 test("duplicate tickets keep the first CSV row", () => {
   const result = dedupeTicketsById([

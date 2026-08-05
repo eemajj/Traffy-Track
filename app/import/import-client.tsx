@@ -1,5 +1,6 @@
 "use client";
 
+import { ImportCompletionToast } from "@/components/import-completion-toast";
 import { ImportProgress } from "@/app/import/import-progress";
 import { ImportResultSummary } from "@/app/import/import-result-summary";
 import { ImportJobHistory } from "@/app/import/import-job-history";
@@ -113,6 +114,8 @@ export function ImportClient({ initialJobs }: { initialJobs: ImportResult[] }) {
       <ImportResultSummary result={result} />
 
       <ImportJobHistory jobs={recentJobs} />
+
+      <ImportCompletionToast result={result} errorMessage={errorMessage} />
     </div>
   );
 }

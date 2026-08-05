@@ -1,6 +1,7 @@
-import { CsvColumnMap, CsvRow, RequiredCsvColumn, TicketRecord, requiredCsvColumns } from "@/lib/import/types";
-import { parseCoordinates } from "@/lib/coordinates";
-import { getSafeHttpsUrl } from "@/lib/safe-url";
+import type { CsvColumnMap, CsvRow, RequiredCsvColumn, TicketRecord } from "./types.ts";
+import { requiredCsvColumns } from "./types.ts";
+import { parseCoordinates } from "../coordinates.ts";
+import { getSafeHttpsUrl } from "../safe-url.ts";
 
 const optionalCsvColumns = new Set<RequiredCsvColumn>([
   "photo",
@@ -147,6 +148,8 @@ export function normalizeCsvRow(row: Record<string, string>, columnMap: CsvColum
   ) as CsvRow;
 }
 
+const DEFAULT_DISTRICT_NAME = "เขตทวีวัฒนา";
+
 export function parseOrgList(orgResponse: string | undefined) {
   return (orgResponse || "")
     .split(",")
@@ -154,8 +157,10 @@ export function parseOrgList(orgResponse: string | undefined) {
     .filter(Boolean);
 }
 
-export function deriveDepartmentList(orgList: string[]) {
-  return orgList.filter((entry) => entry.startsWith("ฝ่าย"));
+export function deriveDepartmentList(orgList: string[], districtName = DEFAULT_DISTRICT_NAME) {
+  return orgList.filter(
+    (entry) => entry.startsWith("ฝ่าย") && (entry.includes(districtName) || entry.includes("ทวีวัฒนา"))
+  );
 }
 
 export function normalizeTicket(row: CsvRow): TicketRecord {
