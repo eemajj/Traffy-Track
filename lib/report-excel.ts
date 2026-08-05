@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import path from "node:path";
 
 import type { ReportDepartmentExportData } from "@/lib/report";
+import { getCoHandlingDepartmentNote } from "@/lib/report/co-handling-note";
 
 type ReadyExportData = Extract<ReportDepartmentExportData, { status: "ready" }>;
 
@@ -131,7 +132,10 @@ export async function buildReportDepartmentWorkbookBuffer(exportData: ReadyExpor
     row.getCell(7).value = formatDateTime(ticket.last_activity);
     row.getCell(8).value = ticket.state || "";
     row.getCell(9).value = ticket.org_response || "";
-    row.getCell(10).value = "";
+    row.getCell(10).value = getCoHandlingDepartmentNote({
+      deptList: ticket.dept_list,
+      currentDept: exportData.department.dept_name
+    });
     row.getCell(11).value = "";
     row.getCell(12).value = "";
 

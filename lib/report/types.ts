@@ -92,6 +92,7 @@ export type ReportBatchDetailTicketRelation = {
   timestamp: string | null;
   last_activity: string | null;
   org_response: string | null;
+  dept_list?: string[] | null;
 };
 
 export type ReportBatchDetailItemRow = {
@@ -240,6 +241,7 @@ export type ReportDepartmentExportData =
         last_activity: string | null;
         org_response: string | null;
         type: string | null;
+        dept_list: string[];
       }>;
     };
 

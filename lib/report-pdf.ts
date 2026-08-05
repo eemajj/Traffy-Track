@@ -4,6 +4,7 @@ import path from "node:path";
 import PDFDocument from "pdfkit/js/pdfkit.standalone";
 
 import type { ReportDepartmentExportData } from "@/lib/report";
+import { getCoHandlingDepartmentNote } from "@/lib/report/co-handling-note";
 import { sanitizeFilenameSegment } from "@/lib/report-excel";
 
 type ReadyExportData = Extract<ReportDepartmentExportData, { status: "ready" }>;
@@ -166,7 +167,7 @@ function addPageFooter(doc: PDFKit.PDFDocument, pageIndex: number, pageCount: nu
   );
 }
 
-function buildRow(ticket: ReadyExportData["tickets"][number], index: number): Record<string, string> {
+function buildRow(ticket: ReadyExportData["tickets"][number], index: number, currentDeptName?: string): Record<string, string> {
   return {
     index: String(index + 1),
     ticket_id: ticket.ticket_id,
@@ -177,7 +178,7 @@ function buildRow(ticket: ReadyExportData["tickets"][number], index: number): Re
     state: ticket.state || "-",
     result: "",
     signature: "",
-    note: ""
+    note: getCoHandlingDepartmentNote({ deptList: ticket.dept_list, currentDept: currentDeptName })
   };
 }
 
@@ -218,7 +219,7 @@ export async function buildReportDepartmentPdfBuffer(exportData: ReadyExportData
   y += HEADER_ROW_HEIGHT;
 
   exportData.tickets.forEach((ticket, index) => {
-    const row = buildRow(ticket, index);
+    const row = buildRow(ticket, index, exportData.department.dept_name);
     const rowHeight = getRowHeight(doc, row);
     const pageBottom = doc.page.height - TABLE_BOTTOM_MARGIN;
 

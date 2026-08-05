@@ -23,11 +23,12 @@ import type {
   ReportPageData,
   ReportPageFilters
 } from "@/lib/report/types";
+import { deriveDepartmentList, parseOrgList } from "@/lib/import/normalize";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { buildPendingStatesOrFilter } from "@/lib/tickets";
 
 const REPORT_ITEM_SNAPSHOT_SELECT =
-  "id, dept_name, ticket_id, snapshot_captured_at, snapshot_type, snapshot_comment, snapshot_address, snapshot_subdistrict, snapshot_timestamp, snapshot_last_activity, snapshot_state, snapshot_org_response, tickets(ticket_id, state, comment, address, subdistrict, timestamp, last_activity, org_response, type)";
+  "id, dept_name, ticket_id, snapshot_captured_at, snapshot_type, snapshot_comment, snapshot_address, snapshot_subdistrict, snapshot_timestamp, snapshot_last_activity, snapshot_state, snapshot_org_response, tickets(ticket_id, state, comment, address, subdistrict, timestamp, last_activity, org_response, type, dept_list)";
 
 async function loadReportEvidenceDepartments(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
@@ -328,6 +329,13 @@ export async function getReportDepartmentExportData(
 
     const tickets = items.map((item) => {
       const ticket = resolveReportItemTicket(item);
+      const rawDeptList = (item.tickets && !Array.isArray(item.tickets) && Array.isArray(item.tickets.dept_list))
+        ? item.tickets.dept_list
+        : [];
+      const deptList = rawDeptList.length > 0
+        ? rawDeptList
+        : deriveDepartmentList(parseOrgList(ticket.org_response || ""));
+
       return {
         ticket_id: item.ticket_id,
         state: ticket.state,
@@ -337,7 +345,8 @@ export async function getReportDepartmentExportData(
         timestamp: ticket.timestamp,
         last_activity: ticket.last_activity,
         org_response: ticket.org_response,
-        type: ticket.type
+        type: ticket.type,
+        dept_list: deptList
       };
     }).sort((left, right) => {
       const leftTime = left.timestamp ? new Date(left.timestamp).getTime() : Number.MAX_SAFE_INTEGER;
