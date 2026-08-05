@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { CaseDepartmentBadges } from "@/components/case-department-badges";
+import { CaseLadderTimeline } from "@/components/case-ladder-timeline";
 import { CasePhoto } from "@/components/case-photo";
 import { CaseTimelineItem, getCaseDetailData } from "@/lib/cases";
 import {
@@ -154,6 +155,11 @@ export default async function CaseDetailPage(props: CaseDetailPageProps) {
               </div>
             </div>
           </section>
+
+          <CaseLadderTimeline
+            items={data.timeline}
+            deptList={data.ticket.dept_list}
+          />
 
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <Timeline
