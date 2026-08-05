@@ -24,6 +24,7 @@ type CasesPageProps = {
     q?: string;
     state?: string;
     dept?: string;
+    role?: string;
     sort?: string;
     page?: string;
     pageSize?: string;
@@ -180,6 +181,17 @@ export default async function CasesPage(props: CasesPageProps) {
                     {dept}
                   </option>
                 ))}
+              </select>
+              <label className="sr-only" htmlFor="cases-role">บทบาทฝ่าย</label>
+              <select
+                id="cases-role"
+                name="role"
+                defaultValue={data.role || ""}
+                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
+              >
+                <option value="">ทุกบทบาท (หลัก + เชิญร่วม)</option>
+                <option value="primary">🏷️ เฉพาะเรื่องรับผิดชอบหลัก</option>
+                <option value="cohandling">👥 เฉพาะเรื่องที่ถูกเชิญร่วม</option>
               </select>
               <label className="sr-only" htmlFor="cases-sort">เรียงลำดับ</label>
               <select

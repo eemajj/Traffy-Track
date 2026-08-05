@@ -24,6 +24,7 @@ export type CaseListFilters = {
   q?: string;
   state?: string;
   dept?: string;
+  role?: string;
   sort?: string;
   page?: string;
   pageSize?: string;
@@ -109,6 +110,7 @@ export type CaseListData =
       q: string;
       state: string;
       dept: string;
+      role?: string;
       sort: CaseListSort;
       page: number;
       pageSize: number;
@@ -179,7 +181,7 @@ function doesTicketMatchSearch(ticket: CaseListItem, q: string) {
     .some((value) => String(value).toLowerCase().includes(normalizedQuery));
 }
 
-function doesTicketMatchListFilters(ticket: CaseListItem, filters: { q: string; state: string; dept: string }) {
+function doesTicketMatchListFilters(ticket: CaseListItem, filters: { q: string; state: string; dept: string; role?: string }) {
   if (!doesTicketMatchSearch(ticket, filters.q)) {
     return false;
   }
@@ -190,6 +192,22 @@ function doesTicketMatchListFilters(ticket: CaseListItem, filters: { q: string; 
 
   if (filters.dept && !ticket.dept_list.includes(filters.dept)) {
     return false;
+  }
+
+  if (filters.role === "primary") {
+    if (filters.dept) {
+      if (ticket.dept_list[0] !== filters.dept) return false;
+    } else if (ticket.dept_list.length !== 1) {
+      return false;
+    }
+  }
+
+  if (filters.role === "cohandling") {
+    if (filters.dept) {
+      if (ticket.dept_list.indexOf(filters.dept) <= 0) return false;
+    } else if (ticket.dept_list.length <= 1) {
+      return false;
+    }
   }
 
   return true;
@@ -209,6 +227,7 @@ function addTicketFilters<QueryBuilder extends TicketFilterQuery>(
     q: string;
     state: string;
     dept: string;
+    role?: string;
     view: CaseListView;
     relationPrefix?: string;
   }
@@ -269,6 +288,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
     const q = (filters.q || "").trim();
     const state = (filters.state || "").trim();
     const dept = (filters.dept || "").trim();
+    const role = (filters.role || "").trim();
     const sort = normalizeCaseListSort(filters.sort);
     const page = normalizePage(filters.page);
     const pageSize = normalizePageSize(filters.pageSize);
@@ -301,6 +321,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
           q,
           state,
           dept,
+          role,
           sort,
           page,
           pageSize,
@@ -334,7 +355,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
         .map((row) => {
           const ticket = normalizeTicketRelation(row.tickets);
 
-          if (!ticket || isClosedState(ticket.state) || !doesTicketMatchListFilters(ticket, { q, state, dept })) {
+          if (!ticket || isClosedState(ticket.state) || !doesTicketMatchListFilters(ticket, { q, state, dept, role })) {
             return null;
           }
 
@@ -358,6 +379,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
         q,
         state,
         dept,
+        role,
         sort,
         page,
         pageSize,
@@ -373,15 +395,46 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
       .from("tickets")
       .select(
         "ticket_id, type, comment, address, subdistrict, district, state, org_response, dept_list, timestamp, last_activity, first_seen_at, updated_at",
-        { count: "exact" }
+        { count: role ? undefined : "exact" }
       );
 
     ticketQuery = addTicketFilters(ticketQuery, {
       q,
       state,
       dept,
+      role,
       view
     });
+
+    if (role) {
+      const ticketsResult = await ticketQuery.limit(5000);
+      if (ticketsResult.error) {
+        throw new Error(`โหลดทะเบียนเรื่องไม่สำเร็จ: ${ticketsResult.error.message}`);
+      }
+
+      const allItems = ((ticketsResult.data as TicketRow[] | null) || [])
+        .map(normalizeTicketRow)
+        .filter((item) => doesTicketMatchListFilters(item, { q: "", state: "", dept, role }));
+
+      allItems.sort((left, right) => compareCaseListItems(left, right, sort));
+
+      return {
+        status: "ready",
+        view,
+        q,
+        state,
+        dept,
+        role,
+        sort,
+        page,
+        pageSize,
+        totalCount: allItems.length,
+        latestBatch,
+        stateOptions,
+        departmentOptions,
+        items: allItems.slice(from, to + 1)
+      };
+    }
 
     const sortField = getCaseSortField(sort);
     const ticketsResult = await ticketQuery
@@ -399,6 +452,7 @@ export async function getCaseListData(filters: CaseListFilters): Promise<CaseLis
       q,
       state,
       dept,
+      role,
       sort,
       page,
       pageSize,
