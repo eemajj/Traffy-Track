@@ -3,28 +3,23 @@ export type CoHandlingNoteInput = {
   currentDept?: string | null;
 };
 
+function getShortDeptName(name: string): string {
+  return (name || "").replace(/\s+เขตทวีวัฒนา\s*$/, "").trim();
+}
+
 /**
- * Derives co-handling note for a ticket relative to a given department or for general display.
- * - For Primary Department (deptList[0]): "[ผู้เชิญร่วม] ➔ เชิญร่วมดำเนินการ: ฝ่าย..."
- * - For Invited Department (deptList[1..n]): "[ผู้ถูกเชิญร่วม] ⬅️ ถูกเชิญร่วมโดย: ฝ่าย..."
+ * Derives concise co-handling note for PDF and Excel reports.
+ * Example output: "ฝ่ายเทศกิจ เชิญร่วม ฝ่ายโยธา"
  */
 export function getCoHandlingDepartmentNote(input: CoHandlingNoteInput): string {
-  const { deptList, currentDept } = input;
+  const { deptList } = input;
 
   if (!deptList || deptList.length <= 1) {
     return "";
   }
 
-  const primaryDept = deptList[0];
-  const coHandlingDepts = deptList.slice(1);
+  const primaryDeptShort = getShortDeptName(deptList[0]);
+  const invitedDeptsShort = deptList.slice(1).map(getShortDeptName).join(", ");
 
-  if (!currentDept) {
-    return `[เชิญร่วม] ฝ่ายหลัก: ${primaryDept} | เชิญร่วม: ${coHandlingDepts.join(", ")}`;
-  }
-
-  if (currentDept === primaryDept) {
-    return `[ผู้เชิญร่วม] ➔ เชิญร่วมดำเนินการ: ${coHandlingDepts.join(", ")}`;
-  }
-
-  return `[ผู้ถูกเชิญร่วม] ⬅️ ถูกเชิญร่วมโดย: ${primaryDept}`;
+  return `${primaryDeptShort} เชิญร่วม ${invitedDeptsShort}`;
 }

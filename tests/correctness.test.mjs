@@ -78,24 +78,14 @@ test("department derivation filters out non-district external departments", () =
   assert.deepEqual(derived, ["ฝ่ายโยธา เขตทวีวัฒนา", "ฝ่ายเทศกิจ เขตทวีวัฒนา"]);
 });
 
-test("co-handling department note derives correct inviter vs invitee roles", () => {
+test("co-handling department note derives concise inviter and invitee format", () => {
   const deptList = ["ฝ่ายเทศกิจ เขตทวีวัฒนา", "ฝ่ายโยธา เขตทวีวัฒนา"];
 
-  const primaryNote = getCoHandlingDepartmentNote({
-    deptList,
-    currentDept: "ฝ่ายเทศกิจ เขตทวีวัฒนา"
-  });
-  assert.equal(primaryNote, "[ผู้เชิญร่วม] ➔ เชิญร่วมดำเนินการ: ฝ่ายโยธา เขตทวีวัฒนา");
-
-  const invitedNote = getCoHandlingDepartmentNote({
-    deptList,
-    currentDept: "ฝ่ายโยธา เขตทวีวัฒนา"
-  });
-  assert.equal(invitedNote, "[ผู้ถูกเชิญร่วม] ⬅️ ถูกเชิญร่วมโดย: ฝ่ายเทศกิจ เขตทวีวัฒนา");
+  const note = getCoHandlingDepartmentNote({ deptList });
+  assert.equal(note, "ฝ่ายเทศกิจ เชิญร่วม ฝ่ายโยธา");
 
   const singleDeptNote = getCoHandlingDepartmentNote({
-    deptList: ["ฝ่ายเทศกิจ เขตทวีวัฒนา"],
-    currentDept: "ฝ่ายเทศกิจ เขตทวีวัฒนา"
+    deptList: ["ฝ่ายเทศกิจ เขตทวีวัฒนา"]
   });
   assert.equal(singleDeptNote, "");
 });
