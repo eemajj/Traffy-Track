@@ -144,84 +144,114 @@ export default async function CasesPage(props: CasesPageProps) {
               ))}
             </div>
 
-            <form className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_0.72fr_auto]" action="/cases">
+            <form className="mt-5 space-y-3" action="/cases">
               <input type="hidden" name="view" value={data.view} />
-              <label className="sr-only" htmlFor="cases-query">ค้นหาเรื่อง</label>
-              <input
-                id="cases-query"
-                name="q"
-                defaultValue={data.q}
-                placeholder="ค้นหารหัสเรื่อง รายละเอียด ที่อยู่ หรือหน่วยงาน"
-                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
-              />
-              <label className="sr-only" htmlFor="cases-state">สถานะเรื่อง</label>
-              <select
-                id="cases-state"
-                name="state"
-                defaultValue={data.state}
-                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
-              >
-                <option value="">ทุกสถานะ</option>
-                {data.stateOptions.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-              <label className="sr-only" htmlFor="cases-department">ฝ่ายรับผิดชอบ</label>
-              <select
-                id="cases-department"
-                name="dept"
-                defaultValue={data.dept}
-                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
-              >
-                <option value="">ทุกฝ่าย</option>
-                {data.departmentOptions.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
-              <label className="sr-only" htmlFor="cases-role">บทบาทฝ่าย</label>
-              <select
-                id="cases-role"
-                name="role"
-                defaultValue={data.role || ""}
-                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
-              >
-                <option value="">ทุกบทบาท (หลัก + เชิญร่วม)</option>
-                <option value="primary">🏷️ เฉพาะเรื่องรับผิดชอบหลัก</option>
-                <option value="cohandling">👥 เฉพาะเรื่องที่ถูกเชิญร่วม</option>
-              </select>
-              <label className="sr-only" htmlFor="cases-sort">เรียงลำดับ</label>
-              <select
-                id="cases-sort"
-                name="sort"
-                defaultValue={data.sort}
-                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
-              >
-                {Object.entries(sortLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <label className="sr-only" htmlFor="cases-page-size">จำนวนรายการต่อหน้า</label>
-              <select
-                id="cases-page-size"
-                name="pageSize"
-                defaultValue={data.pageSize}
-                className="min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
-              >
-                {pageSizeOptions.map((pageSize) => (
-                  <option key={pageSize} value={pageSize}>
-                    {pageSize} รายการ/หน้า
-                  </option>
-                ))}
-              </select>
-              <button className="min-h-12 rounded-2xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-deep" type="submit">
-                ค้นหา
-              </button>
+
+              {/* Row 1: Search bar & Search Button */}
+              <div className="flex flex-col gap-3 md:flex-row">
+                <div className="relative flex-1">
+                  <label className="sr-only" htmlFor="cases-query">ค้นหาเรื่อง</label>
+                  <input
+                    id="cases-query"
+                    name="q"
+                    defaultValue={data.q}
+                    placeholder="🔍 ค้นหารหัสเรื่อง รายละเอียด ที่อยู่ หรือหน่วยงาน"
+                    className="w-full min-h-12 rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-4 focus:ring-[var(--ring)]"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button className="min-h-12 min-w-28 rounded-2xl bg-brand px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep" type="submit">
+                    ค้นหา
+                  </button>
+                  {data.q || data.state || data.dept || data.role ? (
+                    <Link
+                      href={buildCasesHref({ view: data.view, sort: data.sort, pageSize: data.pageSize })}
+                      className="inline-flex min-h-12 items-center rounded-2xl border border-border bg-surface px-4 text-sm font-semibold text-muted hover:bg-white hover:text-danger"
+                    >
+                      ล้างตัวกรอง
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Row 2: Filter Select Dropdowns */}
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+                <div>
+                  <label className="sr-only" htmlFor="cases-state">สถานะเรื่อง</label>
+                  <select
+                    id="cases-state"
+                    name="state"
+                    defaultValue={data.state}
+                    className="w-full min-h-11 rounded-2xl border border-border bg-white px-3 text-xs font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-[var(--ring)]"
+                  >
+                    <option value="">ทุกสถานะ</option>
+                    {data.stateOptions.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="sr-only" htmlFor="cases-department">ฝ่ายรับผิดชอบ</label>
+                  <select
+                    id="cases-department"
+                    name="dept"
+                    defaultValue={data.dept}
+                    className="w-full min-h-11 rounded-2xl border border-border bg-white px-3 text-xs font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-[var(--ring)]"
+                  >
+                    <option value="">ทุกฝ่ายรับผิดชอบ</option>
+                    {data.departmentOptions.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="sr-only" htmlFor="cases-role">บทบาทฝ่าย</label>
+                  <select
+                    id="cases-role"
+                    name="role"
+                    defaultValue={data.role || ""}
+                    className="w-full min-h-11 rounded-2xl border border-border bg-white px-3 text-xs font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-[var(--ring)]"
+                  >
+                    <option value="">ทุกบทบาท (หลัก + เชิญร่วม)</option>
+                    <option value="primary">🏷️ เฉพาะฝ่ายหลัก</option>
+                    <option value="cohandling">👥 เฉพาะฝ่ายเชิญร่วม</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="sr-only" htmlFor="cases-sort">เรียงลำดับ</label>
+                  <select
+                    id="cases-sort"
+                    name="sort"
+                    defaultValue={data.sort}
+                    className="w-full min-h-11 rounded-2xl border border-border bg-white px-3 text-xs font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-[var(--ring)]"
+                  >
+                    {Object.entries(sortLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="sr-only" htmlFor="cases-page-size">จำนวนต่อหน้า</label>
+                  <select
+                    id="cases-page-size"
+                    name="pageSize"
+                    defaultValue={data.pageSize}
+                    className="w-full min-h-11 rounded-2xl border border-border bg-white px-3 text-xs font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-[var(--ring)]"
+                  >
+                    {pageSizeOptions.map((pageSize) => (
+                      <option key={pageSize} value={pageSize}>
+                        {pageSize} รายการ/หน้า
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </form>
 
             <div className="mt-4 flex flex-col gap-2 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
