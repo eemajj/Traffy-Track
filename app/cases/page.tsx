@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
+import { CaseDepartmentBadges } from "@/components/case-department-badges";
 import { CaseListItem, getCaseListData } from "@/lib/cases";
 import {
   buildCasesHref,
@@ -82,8 +83,10 @@ function CaseCard({ item }: { item: CaseListItem }) {
 
       <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
         <div className="rounded-2xl bg-surface px-4 py-3">
-          <p className="text-xs font-semibold text-muted">ฝ่าย</p>
-          <p className="mt-1 leading-6 text-ink">{formatDeptList(item.dept_list)}</p>
+          <p className="text-xs font-semibold text-muted">ฝ่ายรับผิดชอบ</p>
+          <div className="mt-1.5">
+            <CaseDepartmentBadges deptList={item.dept_list} />
+          </div>
         </div>
         <div className="rounded-2xl bg-surface px-4 py-3">
           <p className="text-xs font-semibold text-muted">หน่วยงานในข้อมูล</p>

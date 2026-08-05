@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { CaseDepartmentBadges } from "@/components/case-department-badges";
 import { CasePhoto } from "@/components/case-photo";
 import { CaseTimelineItem, getCaseDetailData } from "@/lib/cases";
 import {
@@ -114,8 +115,10 @@ export default async function CaseDetailPage(props: CaseDetailPageProps) {
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-surface px-4 py-3">
-                    <p className="text-xs font-semibold text-muted">ฝ่าย</p>
-                    <p className="mt-1 text-sm leading-6 text-ink">{formatList(data.ticket.dept_list)}</p>
+                    <p className="text-xs font-semibold text-muted">ฝ่ายรับผิดชอบ</p>
+                    <div className="mt-1.5">
+                      <CaseDepartmentBadges deptList={data.ticket.dept_list} />
+                    </div>
                   </div>
                   <div className="rounded-2xl bg-surface px-4 py-3">
                     <p className="text-xs font-semibold text-muted">ประเภท</p>
