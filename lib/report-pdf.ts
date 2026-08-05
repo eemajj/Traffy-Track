@@ -146,8 +146,15 @@ function drawRow(doc: PDFKit.PDFDocument, row: Record<string, string>, y: number
 
   for (const column of columns) {
     doc.rect(x, y, column.width, height).stroke("#7d8da6");
-    addText(doc, row[column.key] || "", x + CELL_PADDING, y + CELL_PADDING, column.width - CELL_PADDING * 2, height - CELL_PADDING * 2, {
-      size: 7.4,
+    const cellText = row[column.key] || "";
+
+    let fontSize = 7.4;
+    if (column.key === "note" && cellText.length > 25) {
+      fontSize = Math.max(5.5, Number((7.4 - (cellText.length - 25) * 0.08).toFixed(1)));
+    }
+
+    addText(doc, cellText, x + CELL_PADDING, y + CELL_PADDING, column.width - CELL_PADDING * 2, height - CELL_PADDING * 2, {
+      size: fontSize,
       align: column.align || "left"
     });
     x += column.width;
