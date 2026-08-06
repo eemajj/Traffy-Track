@@ -164,17 +164,30 @@ export function deriveDepartmentList(orgList: string[], districtName = DEFAULT_D
 }
 
 export function isDistrictRelatedTicket(
-  ticket: { org_list: string[]; dept_list: string[] },
+  ticket: { org_list: string[]; dept_list: string[]; district?: string | null; state?: string | null },
   districtName = DEFAULT_DISTRICT_NAME
 ): boolean {
+  // 1. If dept_list has district department(s), it is district related
   if (ticket.dept_list && ticket.dept_list.length > 0) {
     return true;
   }
 
+  // 2. If org_list contains district office or any district keyword
   if (ticket.org_list && ticket.org_list.length > 0) {
-    return ticket.org_list.some(
-      (entry) => entry.includes(districtName) || entry.includes("ทวีวัฒนา") || entry.startsWith("ฝ่าย")
-    );
+    if (ticket.org_list.some((entry) => entry.includes(districtName) || entry.includes("ทวีวัฒนา") || entry.startsWith("ฝ่าย"))) {
+      return true;
+    }
+  }
+
+  // 3. Keep tickets geofenced to district area (เขตทวีวัฒนา)
+  if (ticket.district && (ticket.district.includes(districtName) || ticket.district.includes("ทวีวัฒนา"))) {
+    return true;
+  }
+
+  // 4. Keep all intake & active pending tickets waiting for department assignment
+  const state = (ticket.state || "").trim();
+  if (!state || state === "รอรับเรื่อง" || state === "รับเรื่อง" || state === "ส่งต่อ(ใหม่)" || state === "กำลังดำเนินการ") {
+    return true;
   }
 
   return false;
