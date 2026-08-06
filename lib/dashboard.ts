@@ -86,6 +86,8 @@ export type EvidenceReadinessDepartment = {
   version_number: number | null;
 };
 
+export type DashboardMetricScope = "district" | "all";
+
 export type DashboardData =
   | {
       status: "missing_env";
@@ -96,6 +98,7 @@ export type DashboardData =
     }
   | {
       status: "ready";
+      scope: DashboardMetricScope;
       latestBatch: LatestImportBatch | null;
       pendingTicketCount: number;
       unassignedCount: number;
@@ -198,7 +201,7 @@ function buildRecentTicketChanges(rows: RecentChangeRow[]) {
   return Array.from(grouped.values()).slice(0, 8);
 }
 
-async function loadDashboardData(): Promise<DashboardData> {
+async function loadDashboardData(scope: DashboardMetricScope = "district"): Promise<DashboardData> {
   if (!hasSupabaseAdminEnv()) {
     return { status: "missing_env" };
   }
@@ -384,6 +387,7 @@ async function loadDashboardData(): Promise<DashboardData> {
 
     return {
       status: "ready",
+      scope,
       latestBatch,
       pendingTicketCount: pendingCountResult.count || 0,
       unassignedCount: allUnassignedRows.length,
@@ -424,14 +428,12 @@ async function loadDashboardData(): Promise<DashboardData> {
 
 export const DASHBOARD_CACHE_TAG = "dashboard-data";
 
-// A short shared cache absorbs bursts (for example, everyone opening the
-// dashboard during a presentation) while keeping operational data near-real-time.
 const getCachedDashboardData = unstable_cache(
-  loadDashboardData,
+  async (scope: DashboardMetricScope) => loadDashboardData(scope),
   [DASHBOARD_CACHE_TAG],
   { revalidate: 15, tags: [DASHBOARD_CACHE_TAG] }
 );
 
-export async function getDashboardData(): Promise<DashboardData> {
-  return getCachedDashboardData();
+export async function getDashboardData(scope: DashboardMetricScope = "district"): Promise<DashboardData> {
+  return getCachedDashboardData(scope);
 }

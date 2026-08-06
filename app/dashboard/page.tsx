@@ -60,16 +60,27 @@ type DashboardPageProps = {
   searchParams?: Promise<{
     from?: string | string[];
     to?: string | string[];
+    scope?: string | string[];
   }>;
 };
 
 export default async function DashboardPage(props: DashboardPageProps) {
   const searchParams = (await props.searchParams) || {};
   const range = normalizeDashboardDateRange(searchParams);
+  const rawScope = Array.isArray(searchParams.scope) ? searchParams.scope[0] : searchParams.scope;
+  const currentScope = rawScope === "all" ? "all" : "district";
+
   const [data, statistics] = await Promise.all([
-    getDashboardData(),
+    getDashboardData(currentScope),
     getDashboardStatistics(range)
   ]);
+
+  const fromParam = Array.isArray(searchParams.from) ? searchParams.from[0] : searchParams.from;
+  const toParam = Array.isArray(searchParams.to) ? searchParams.to[0] : searchParams.to;
+  const dateQueryParams = [
+    fromParam ? `from=${encodeURIComponent(fromParam)}` : "",
+    toParam ? `to=${encodeURIComponent(toParam)}` : ""
+  ].filter(Boolean).join("&");
 
   return (
     <AppShell
@@ -80,9 +91,39 @@ export default async function DashboardPage(props: DashboardPageProps) {
         <TraffyStatistics data={statistics} />
 
         <section aria-labelledby="local-operations-title" className="space-y-5">
-          <div className="border-b border-border pb-4">
-            <h2 id="local-operations-title" className="text-2xl font-semibold tracking-[-0.02em] text-ink">งานที่ต้องดำเนินการในระบบนี้</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">ติดตามรอบนำเข้า เรื่องที่ยังไม่มีฝ่าย และการเปลี่ยนแปลงล่าสุด โดยไม่ปะปนกับสถิติตามช่วงวันที่ด้านบน</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+            <div>
+              <h2 id="local-operations-title" className="text-2xl font-semibold tracking-[-0.02em] text-ink">
+                {currentScope === "district" ? "🎯 การติดตามงานของเขตทวีวัฒนา (8 ฝ่าย)" : "🌐 ภาพรวมเรื่องทั้งหมดในพื้นที่"}
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                {currentScope === "district"
+                  ? "แสดงสถิติและภาระงานเฉพาะที่เจ้าหน้าที่สังกัดเขตทวีวัฒนาเป็นผู้รับผิดชอบดำเนินการจริง"
+                  : "แสดงรวมทุกเรื่องที่ผ่านเข้ามาในพิกัดเขตทวีวัฒนา (รวมเรื่องส่งต่อหน่วยงานภายนอก)"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center rounded-2xl border border-border bg-surface p-1.5 text-xs font-semibold">
+              <Link
+                href={`/dashboard?scope=district${dateQueryParams ? `&${dateQueryParams}` : ""}`}
+                className={`rounded-xl px-3.5 py-1.5 transition-colors ${
+                  currentScope === "district"
+                    ? "bg-brand text-white shadow-sm font-bold"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                🟢 เฉพาะงานของเขต
+              </Link>
+              <Link
+                href={`/dashboard?scope=all${dateQueryParams ? `&${dateQueryParams}` : ""}`}
+                className={`rounded-xl px-3.5 py-1.5 transition-colors ${
+                  currentScope === "all"
+                    ? "bg-brand text-white shadow-sm font-bold"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                🌐 รวมเคสผ่านทาง/ภายนอก
+              </Link>
+            </div>
           </div>
       {data.status === "missing_env" ? (
         <section className="rounded-2xl border border-warning/20 bg-warning/10 p-6">
