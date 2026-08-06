@@ -45,3 +45,47 @@ export function formatCaseChangeField(value: string) {
   };
   return labels[value] || value;
 }
+
+export function getCaseAgeDays(timestamp: string | null, now = new Date()): number {
+  if (!timestamp) return 0;
+  const created = new Date(timestamp);
+  if (Number.isNaN(created.getTime())) return 0;
+  const diffMs = now.getTime() - created.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+export function getCaseAgingBadgeInfo(timestamp: string | null, state: string | null, now = new Date()) {
+  if (isClosedTicketState(state)) return null;
+  const ageDays = getCaseAgeDays(timestamp, now);
+
+  if (ageDays >= 31) {
+    return {
+      ageDays,
+      category: "critical",
+      label: `🔴 ค้าง ${ageDays} วัน (>30วัน)`,
+      className: "bg-red-100 text-red-800 border-red-200"
+    };
+  }
+  if (ageDays >= 15) {
+    return {
+      ageDays,
+      category: "overdue",
+      label: `🟠 ค้าง ${ageDays} วัน (เกิน SLA)`,
+      className: "bg-orange-100 text-orange-800 border-orange-200"
+    };
+  }
+  if (ageDays >= 8) {
+    return {
+      ageDays,
+      category: "warning",
+      label: `🟡 ค้าง ${ageDays} วัน (เริ่มชะลอ)`,
+      className: "bg-amber-100 text-amber-800 border-amber-200"
+    };
+  }
+  return {
+    ageDays,
+    category: "normal",
+    label: `🟢 ค้าง ${ageDays} วัน`,
+    className: "bg-emerald-100 text-emerald-800 border-emerald-200"
+  };
+}

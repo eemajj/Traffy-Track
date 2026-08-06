@@ -13,6 +13,7 @@ import {
   formatCaseDepartments as formatDeptList,
   formatCaseNumber as formatNumber,
   formatCaseOrgResponse as formatOrgResponse,
+  getCaseAgingBadgeInfo,
   getCaseStatusClassName as getStatusClassName
 } from "@/lib/cases/page-model";
 
@@ -35,6 +36,7 @@ type CasesPageProps = {
 
 function CaseCard({ item }: { item: CaseListItem }) {
   const isExternal = isExternalAgencyOrgResponse(item.org_response).isExternal || item.state === "ส่งต่อ(ใหม่)";
+  const agingInfo = getCaseAgingBadgeInfo(item.timestamp, item.state);
 
   return (
     <article className="rounded-2xl border border-border/80 bg-white p-5 shadow-panel">
@@ -47,6 +49,11 @@ function CaseCard({ item }: { item: CaseListItem }) {
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
               {item.state || "ไม่ระบุสถานะ"}
             </span>
+            {agingInfo ? (
+              <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${agingInfo.className}`}>
+                {agingInfo.label}
+              </span>
+            ) : null}
             {isExternal ? (
               <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
                 🌐 หน่วยงานภายนอก
@@ -303,25 +310,32 @@ export default async function CasesPage(props: CasesPageProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/70">
-                      {data.items.map((item) => (
-                        <tr key={item.ticket_id} className="align-top hover:bg-surface/45">
-                          <td className="px-4 py-4">
-                            <Link href={`/cases/${encodeURIComponent(item.ticket_id)}`} className="font-mono text-xs font-semibold text-brand hover:text-brand-deep">
-                              {item.ticket_id}
-                            </Link>
-                            <span className={`mt-2 block w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
-                              {item.state || "ไม่ระบุสถานะ"}
-                            </span>
-                            {isExternalAgencyOrgResponse(item.org_response).isExternal || item.state === "ส่งต่อ(ใหม่)" ? (
-                              <span className="mt-1 block w-fit rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
-                                🌐 หน่วยงานภายนอก
+                      {data.items.map((item) => {
+                        const agingInfo = getCaseAgingBadgeInfo(item.timestamp, item.state);
+                        return (
+                          <tr key={item.ticket_id} className="align-top hover:bg-surface/45">
+                            <td className="px-4 py-4">
+                              <Link href={`/cases/${encodeURIComponent(item.ticket_id)}`} className="font-mono text-xs font-semibold text-brand hover:text-brand-deep">
+                                {item.ticket_id}
+                              </Link>
+                              <span className={`mt-2 block w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
+                                {item.state || "ไม่ระบุสถานะ"}
                               </span>
-                            ) : (!item.dept_list || item.dept_list.length === 0) ? (
-                              <span className="mt-1 block w-fit rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
-                                ⚠️ ไม่พบฝ่ายในเขต
-                              </span>
-                            ) : null}
-                          </td>
+                              {agingInfo ? (
+                                <span className={`mt-1 block w-fit rounded-full border px-2 py-0.5 text-[11px] font-semibold ${agingInfo.className}`}>
+                                  {agingInfo.label}
+                                </span>
+                              ) : null}
+                              {isExternalAgencyOrgResponse(item.org_response).isExternal || item.state === "ส่งต่อ(ใหม่)" ? (
+                                <span className="mt-1 block w-fit rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                                  🌐 หน่วยงานภายนอก
+                                </span>
+                              ) : (!item.dept_list || item.dept_list.length === 0) ? (
+                                <span className="mt-1 block w-fit rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                                  ⚠️ ไม่พบฝ่ายในเขต
+                                </span>
+                              ) : null}
+                            </td>
                           <td className="px-4 py-4">
                             <Link href={`/cases/${encodeURIComponent(item.ticket_id)}`} className="line-clamp-2 font-semibold leading-5 text-ink hover:text-brand">
                               {item.comment || "ไม่มีรายละเอียดปัญหา"}
@@ -334,7 +348,8 @@ export default async function CasesPage(props: CasesPageProps) {
                           <td className="px-4 py-4 whitespace-nowrap text-muted">{formatDateTime(item.timestamp)}</td>
                           <td className="px-4 py-4 whitespace-nowrap font-medium text-ink">{formatDateTime(item.last_activity)}</td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 </div>

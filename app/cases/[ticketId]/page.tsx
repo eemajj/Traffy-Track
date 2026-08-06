@@ -12,6 +12,7 @@ import {
   formatCaseDateTime as formatDateTime,
   formatCaseList as formatList,
   formatCaseNumber as formatNumber,
+  getCaseAgingBadgeInfo,
   getCaseStatusClassName as getStatusClassName
 } from "@/lib/cases/page-model";
 
@@ -114,6 +115,14 @@ export default async function CaseDetailPage(props: CaseDetailPageProps) {
                     <span className={`w-fit shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${getStatusClassName(data.ticket.state)}`}>
                       {data.ticket.state || "ไม่ระบุสถานะ"}
                     </span>
+                    {(() => {
+                      const agingInfo = getCaseAgingBadgeInfo(data.ticket.timestamp, data.ticket.state);
+                      return agingInfo ? (
+                        <span className={`w-fit shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${agingInfo.className}`}>
+                          ⏱️ {agingInfo.label}
+                        </span>
+                      ) : null;
+                    })()}
                     {isExternalAgencyOrgResponse(data.ticket.org_response).isExternal || data.ticket.state === "ส่งต่อ(ใหม่)" ? (
                       <span className="w-fit shrink-0 rounded-full bg-blue-100 px-3.5 py-1.5 text-xs font-semibold text-blue-700">
                         🌐 หน่วยงานภายนอก

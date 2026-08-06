@@ -48,6 +48,12 @@ export type SummaryReportData = {
     actionableTotal: number;
     byState: Record<SummaryPendingState, number>;
   };
+  agingMatrix: {
+    normal: number;
+    warning: number;
+    overdue: number;
+    critical: number;
+  };
   departments: Array<{
     name: string;
     total: number;
@@ -178,6 +184,24 @@ export function summarizeTicketsForReport(
 
   const pendingTotal = SUMMARY_PENDING_STATES.reduce((sum, state) => sum + byState[state], 0);
 
+  const agingMatrix = { normal: 0, warning: 0, overdue: 0, critical: 0 };
+  const now = new Date();
+
+  for (const ticket of tickets) {
+    if (ticket.state === "เสร็จสิ้น" || ticket.state === "ไม่เกี่ยวข้อง") continue;
+    const pendingState = normalizePendingState(ticket.state);
+    if (!pendingState || pendingState === "ส่งต่อ(ใหม่)") continue;
+
+    const created = new Date(ticket.timestamp);
+    if (Number.isNaN(created.getTime())) continue;
+    const ageDays = Math.max(0, Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+
+    if (ageDays >= 31) agingMatrix.critical++;
+    else if (ageDays >= 15) agingMatrix.overdue++;
+    else if (ageDays >= 8) agingMatrix.warning++;
+    else agingMatrix.normal++;
+  }
+
   return {
     officeName: OFFICE_NAME,
     fromDate: input.fromDate,
@@ -191,6 +215,7 @@ export function summarizeTicketsForReport(
       actionableTotal: pendingTotal - byState["ส่งต่อ(ใหม่)"],
       byState
     },
+    agingMatrix,
     departments
   };
 }
