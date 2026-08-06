@@ -68,29 +68,20 @@ type DashboardPageProps = {
 export default async function DashboardPage(props: DashboardPageProps) {
   const searchParams = (await props.searchParams) || {};
   const range = normalizeDashboardDateRange(searchParams);
-  const rawScope = Array.isArray(searchParams.scope) ? searchParams.scope[0] : searchParams.scope;
   const selectedDept = Array.isArray(searchParams.dept) ? searchParams.dept[0] : searchParams.dept;
-  const currentScope: DashboardMetricScope = rawScope === "external" ? "external" : rawScope === "all" ? "all" : "district";
 
   const [data, statistics] = await Promise.all([
-    getDashboardData(currentScope),
-    getDashboardStatistics(range, currentScope, selectedDept)
+    getDashboardData("district"),
+    getDashboardStatistics(range, "district", selectedDept)
   ]);
-
-  const fromParam = Array.isArray(searchParams.from) ? searchParams.from[0] : searchParams.from;
-  const toParam = Array.isArray(searchParams.to) ? searchParams.to[0] : searchParams.to;
-  const dateQueryParams = [
-    fromParam ? `from=${encodeURIComponent(fromParam)}` : "",
-    toParam ? `to=${encodeURIComponent(toParam)}` : ""
-  ].filter(Boolean).join("&");
 
   return (
     <AppShell
-      title="ภาพรวมระบบ"
-      description="สรุปสถานะเรื่องตามช่วงวันที่ด้วยสูตรเดียวกับ Traffy พร้อมงานคงค้างและรายการที่ต้องดำเนินการในระบบ"
+      title="ภาพรวมผลงานและการติดตามงาน เขตทวีวัฒนา"
+      description="สรุปสถิติตัวเลขและการติดตามเรื่องคงค้างเฉพาะของ 8 ฝ่ายในสังกัดสำนักงานเขตทวีวัฒนา"
     >
       <div className="space-y-10">
-        <TraffyStatistics data={statistics} scope={currentScope} selectedDept={selectedDept} />
+        <TraffyStatistics data={statistics} selectedDept={selectedDept} />
 
         <section aria-labelledby="local-operations-title" className="space-y-5">
           <div className="border-b border-border pb-4">
@@ -265,7 +256,7 @@ export default async function DashboardPage(props: DashboardPageProps) {
                 </div>
                 {selectedDept ? (
                   <Link
-                    href={`/dashboard?scope=${encodeURIComponent(currentScope)}`}
+                    href="/dashboard"
                     className="text-xs font-semibold text-brand hover:text-brand-deep"
                   >
                     ✕ แสดงทุกฝ่าย
@@ -281,7 +272,7 @@ export default async function DashboardPage(props: DashboardPageProps) {
                     return (
                       <Link
                         key={row.dept_name}
-                        href={`/dashboard?dept=${encodeURIComponent(row.dept_name)}&scope=${encodeURIComponent(currentScope)}`}
+                        href={`/dashboard?dept=${encodeURIComponent(row.dept_name)}`}
                         className={`flex items-center justify-between rounded-xl border p-3 transition-all ${
                           isSelected
                             ? "border-brand bg-brand/5 shadow-xs font-bold"
