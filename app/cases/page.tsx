@@ -312,6 +312,15 @@ export default async function CasesPage(props: CasesPageProps) {
                             <span className={`mt-2 block w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
                               {item.state || "ไม่ระบุสถานะ"}
                             </span>
+                            {isExternalAgencyOrgResponse(item.org_response).isExternal || item.state === "ส่งต่อ(ใหม่)" ? (
+                              <span className="mt-1 block w-fit rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                                🌐 หน่วยงานภายนอก
+                              </span>
+                            ) : (!item.dept_list || item.dept_list.length === 0) ? (
+                              <span className="mt-1 block w-fit rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                                ⚠️ ไม่พบฝ่ายในเขต
+                              </span>
+                            ) : null}
                           </td>
                           <td className="px-4 py-4">
                             <Link href={`/cases/${encodeURIComponent(item.ticket_id)}`} className="line-clamp-2 font-semibold leading-5 text-ink hover:text-brand">

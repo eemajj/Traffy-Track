@@ -6,6 +6,7 @@ import { CaseDepartmentBadges } from "@/components/case-department-badges";
 import { CaseLadderTimeline } from "@/components/case-ladder-timeline";
 import { CasePhoto } from "@/components/case-photo";
 import { CaseTimelineItem, getCaseDetailData } from "@/lib/cases";
+import { isExternalAgencyOrgResponse } from "@/lib/dashboard/statistics";
 import {
   formatCaseChangeField as formatChangeField,
   formatCaseDateTime as formatDateTime,
@@ -109,9 +110,20 @@ export default async function CaseDetailPage(props: CaseDetailPageProps) {
                     </h1>
                     <p className="mt-3 text-sm leading-6 text-muted">{data.ticket.address || "-"}{data.ticket.subdistrict ? `, ${data.ticket.subdistrict}` : ""}</p>
                   </div>
-                  <span className={`w-fit shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${getStatusClassName(data.ticket.state)}`}>
-                    {data.ticket.state || "ไม่ระบุสถานะ"}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`w-fit shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${getStatusClassName(data.ticket.state)}`}>
+                      {data.ticket.state || "ไม่ระบุสถานะ"}
+                    </span>
+                    {isExternalAgencyOrgResponse(data.ticket.org_response).isExternal || data.ticket.state === "ส่งต่อ(ใหม่)" ? (
+                      <span className="w-fit shrink-0 rounded-full bg-blue-100 px-3.5 py-1.5 text-xs font-semibold text-blue-700">
+                        🌐 หน่วยงานภายนอก
+                      </span>
+                    ) : (!data.ticket.dept_list || data.ticket.dept_list.length === 0) ? (
+                      <span className="w-fit shrink-0 rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-semibold text-amber-800">
+                        ⚠️ ไม่พบฝ่ายในเขต
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
