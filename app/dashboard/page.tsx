@@ -258,19 +258,48 @@ export default async function DashboardPage(props: DashboardPageProps) {
             </section>
 
             <section className="rounded-2xl border border-border bg-white p-6">
-              <h2 className="text-xl font-bold">เรื่องคงค้างแยกตามฝ่าย</h2>
-              <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <div>
+                  <h2 className="text-xl font-bold">เรื่องคงค้างแยกตามฝ่าย</h2>
+                  <p className="mt-0.5 text-xs text-muted">กดที่ฝ่ายเพื่อดูสถิติและเรื่องค้างของฝ่ายนั้นโดยเฉพาะ</p>
+                </div>
+                {selectedDept ? (
+                  <Link
+                    href={`/dashboard?scope=${encodeURIComponent(currentScope)}`}
+                    className="text-xs font-semibold text-brand hover:text-brand-deep"
+                  >
+                    ✕ แสดงทุกฝ่าย
+                  </Link>
+                ) : null}
+              </div>
+              <div className="mt-4 space-y-2">
                 {data.departmentSummary.length === 0 ? (
                   <p className="text-sm text-muted">ยังไม่มีข้อมูลฝ่ายที่มีเรื่องคงค้าง</p>
                 ) : (
-                  data.departmentSummary.map((row) => (
-                    <div key={row.dept_name} className="flex items-center justify-between border-b border-border px-1 py-3 last:border-b-0">
-                      <p className="pr-4 text-sm font-medium text-ink">{row.dept_name}</p>
-                      <span className="rounded-full bg-brand px-3 py-1 text-sm font-semibold text-white">
-                        {formatNumber(row.pending_count)}
-                      </span>
-                    </div>
-                  ))
+                  data.departmentSummary.map((row) => {
+                    const isSelected = selectedDept === row.dept_name;
+                    return (
+                      <Link
+                        key={row.dept_name}
+                        href={`/dashboard?dept=${encodeURIComponent(row.dept_name)}&scope=${encodeURIComponent(currentScope)}`}
+                        className={`flex items-center justify-between rounded-xl border p-3 transition-all ${
+                          isSelected
+                            ? "border-brand bg-brand/5 shadow-xs font-bold"
+                            : "border-border/70 bg-white hover:border-brand/40 hover:bg-surface"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-ink">{row.dept_name}</span>
+                          {isSelected ? (
+                            <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-white">เลือกอยู่</span>
+                          ) : null}
+                        </div>
+                        <span className="rounded-full bg-brand px-3 py-1 text-xs font-bold text-white shadow-xs">
+                          {formatNumber(row.pending_count)} เรื่อง
+                        </span>
+                      </Link>
+                    );
+                  })
                 )}
               </div>
             </section>
