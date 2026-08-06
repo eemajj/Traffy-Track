@@ -245,7 +245,18 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
         .or(pendingFilter)
         .or("dept_list.is.null,dept_list.eq.{}")
         .limit(1000),
-      supabase.rpc("dashboard_pending_by_department"),
+      supabase
+        .from("tickets")
+        .select("dept_list, state")
+        .in("state", [
+          "รับเรื่อง",
+          "กำลังดำเนินการ",
+          "ศึกษาปัญหา",
+          "ของบประมาณ",
+          "จัดซื้อจัดจ้าง",
+          "ขั้นตอนทางกฎหมาย",
+          "ติดตามเรื่อง"
+        ]),
       supabase
         .from("tickets")
         .select("ticket_id, state, comment, address, last_activity, org_response, dept_list")
@@ -385,6 +396,21 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
       }
     }
 
+    const rawDeptRows = (departmentSummaryResult.data as Array<{ dept_list: string[] | null; state: string }> | null) || [];
+    const deptCountMap = new Map<string, number>();
+
+    for (const row of rawDeptRows) {
+      const depts = (row.dept_list || []).filter((d) => d.includes("ทวีวัฒนา"));
+      if (depts.length > 0) {
+        const primaryDept = depts[depts.length - 1];
+        deptCountMap.set(primaryDept, (deptCountMap.get(primaryDept) || 0) + 1);
+      }
+    }
+
+    const calculatedDepartmentSummary: DepartmentSummaryRow[] = Array.from(deptCountMap.entries())
+      .map(([dept_name, pending_count]) => ({ dept_name, pending_count }))
+      .sort((a, b) => b.pending_count - a.pending_count);
+
     return {
       status: "ready",
       scope,
@@ -397,7 +423,7 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
       actionableChangeCount: actionableChangeCountResult.count || 0,
       agingSummary,
       evidenceReadiness,
-      departmentSummary: (departmentSummaryResult.data as DepartmentSummaryRow[] | null) || [],
+      departmentSummary: calculatedDepartmentSummary,
       unassignedTickets,
       recentChanges: buildRecentTicketChanges(recentRows),
       actionCenter: ((actionCenterResult.data || []) as Array<{
