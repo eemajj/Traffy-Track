@@ -127,6 +127,76 @@ export default async function DashboardPage(props: DashboardPageProps) {
 
           <WorkflowActionCenter items={data.actionCenter} />
 
+          {/* SLA Aging Summary Section */}
+          <section className="rounded-2xl border border-border bg-white p-6">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+              <div>
+                <h2 className="text-xl font-bold text-ink">⏱️ การติดตามอายุเรื่องคงค้างตามเกณฑ์ SLA</h2>
+                <p className="mt-1 text-sm text-muted">จำแนกระยะเวลาคงค้างของเรื่องในพื้นที่ เพื่อเร่งรัดเคสที่เกินมาตรฐาน</p>
+              </div>
+              <Link href="/cases?sort=received-asc" className="text-xs font-semibold text-brand hover:text-brand-deep">
+                ดูเรื่องค้างนานที่สุด →
+              </Link>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+                <p className="text-xs font-semibold text-emerald-800">🟢 ปกติ (0 - 7 วัน)</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-900">{formatNumber(data.agingSummary.normal)}</p>
+                <p className="mt-1 text-xs text-emerald-700">อยู่ในระยะเวลาดำเนินการ</p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                <p className="text-xs font-semibold text-amber-800">🟡 เริ่มชะลอ (8 - 14 วัน)</p>
+                <p className="mt-2 text-2xl font-bold text-amber-900">{formatNumber(data.agingSummary.warning)}</p>
+                <p className="mt-1 text-xs text-amber-700">ควรเริ่มเฝ้าระวังติดตาม</p>
+              </div>
+              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4">
+                <p className="text-xs font-semibold text-orange-800">🟠 เกิน SLA (15 - 30 วัน)</p>
+                <p className="mt-2 text-2xl font-bold text-orange-900">{formatNumber(data.agingSummary.overdue)}</p>
+                <p className="mt-1 text-xs text-orange-700">ต้องชี้แจงสาเหตุค้างช้า</p>
+              </div>
+              <div className="rounded-xl border border-red-200 bg-red-50/50 p-4">
+                <p className="text-xs font-semibold text-red-800">🔴 ค้างวิกฤต (&gt; 30 วัน)</p>
+                <p className="mt-2 text-2xl font-bold text-red-900">{formatNumber(data.agingSummary.critical)}</p>
+                <p className="mt-1 text-xs text-red-700">ต้องรายงาน ผอ.เขต ด่วน</p>
+              </div>
+            </div>
+          </section>
+
+          {/* Pre-close Evidence Readiness Board */}
+          {data.evidenceReadiness.length > 0 ? (
+            <section className="rounded-2xl border border-brand/20 bg-brand/5 p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-brand/10 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-ink">📋 กระดานติดตามความพร้อมการส่งหลักฐาน 8 ฝ่าย</h2>
+                  <p className="mt-1 text-sm text-muted">ตรวจสอบความพร้อมในการยื่นไฟล์หลักฐานประจำรอบ ก่อนออกรายงานสรุปผู้บริหาร</p>
+                </div>
+                <Link href="/report" className="text-xs font-semibold text-brand hover:text-brand-deep">
+                  ไปที่หน้ารายงานประจำรอบ →
+                </Link>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {data.evidenceReadiness.map((dept) => (
+                  <div key={dept.dept_name} className="flex items-center justify-between rounded-xl border border-border bg-white p-3.5 shadow-sm">
+                    <p className="text-xs font-semibold text-ink">{dept.dept_name}</p>
+                    {dept.status === "ready" ? (
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                        🟢 ส่งแล้ว
+                      </span>
+                    ) : dept.status === "draft" ? (
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                        🟡 ฉบับร่าง
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
+                        🔴 ยังไม่ส่ง
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
             <section className="rounded-2xl border border-border bg-white p-6">
               <div className="flex items-start justify-between gap-4">

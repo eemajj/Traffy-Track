@@ -37,6 +37,32 @@ export function isExternalAgencyOrgResponse(orgResponse: string | null): { isExt
   return { isExternal: false, externalOrgName: null };
 }
 
+export type TicketAgeCategory = "normal" | "warning" | "overdue" | "critical";
+
+export function getTicketAgeDays(timestamp: string | null, now = new Date()): number {
+  if (!timestamp) return 0;
+  const created = new Date(timestamp);
+  if (Number.isNaN(created.getTime())) return 0;
+  const diffMs = now.getTime() - created.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+export function getTicketAgeCategory(ageDays: number): TicketAgeCategory {
+  if (ageDays >= 31) return "critical";
+  if (ageDays >= 15) return "overdue";
+  if (ageDays >= 8) return "warning";
+  return "normal";
+}
+
+export function getTicketAgeCategoryLabel(category: TicketAgeCategory): string {
+  switch (category) {
+    case "critical": return "ค้างวิกฤต (>30 วัน)";
+    case "overdue": return "เกิน SLA (15-30 วัน)";
+    case "warning": return "เริ่มชะลอ (8-14 วัน)";
+    case "normal": return "ปกติ (0-7 วัน)";
+  }
+}
+
 export type DashboardStatisticsTicket = {
   ticket_id: string;
   type: string | null;

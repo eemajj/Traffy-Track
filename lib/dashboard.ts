@@ -32,9 +32,14 @@ export type UnassignedTicketRow = {
   externalOrgName?: string | null;
 };
 
-import { isExternalAgencyOrgResponse } from "@/lib/dashboard/statistics";
+import {
+  getTicketAgeCategory,
+  getTicketAgeDays,
+  isExternalAgencyOrgResponse,
+  type TicketAgeCategory
+} from "@/lib/dashboard/statistics";
 
-export { isExternalAgencyOrgResponse };
+export { isExternalAgencyOrgResponse, getTicketAgeCategory, getTicketAgeDays };
 
 type TicketRelation = {
   state: string | null;
@@ -74,6 +79,13 @@ export type RecentTicketChange = {
   }>;
 };
 
+export type EvidenceReadinessDepartment = {
+  dept_name: string;
+  status: "ready" | "draft" | "missing";
+  uploaded_at: string | null;
+  version_number: number | null;
+};
+
 export type DashboardData =
   | {
       status: "missing_env";
@@ -91,6 +103,13 @@ export type DashboardData =
       externalAgencyCount: number;
       reopenedTicketCount: number;
       actionableChangeCount: number;
+      agingSummary: {
+        normal: number;
+        warning: number;
+        overdue: number;
+        critical: number;
+      };
+      evidenceReadiness: EvidenceReadinessDepartment[];
       departmentSummary: DepartmentSummaryRow[];
       unassignedTickets: UnassignedTicketRow[];
       recentChanges: RecentTicketChange[];
@@ -210,7 +229,8 @@ async function loadDashboardData(): Promise<DashboardData> {
       actionableChangeCountResult,
       reopenedTicketCountResult,
       recentChangesResult,
-      actionCenterResult
+      actionCenterResult,
+      pendingTimestampsResult
     ] = await Promise.all([
       supabase
         .from("tickets")
@@ -258,7 +278,12 @@ async function loadDashboardData(): Promise<DashboardData> {
             .order("detected_at", { ascending: false })
             .limit(120)
         : Promise.resolve({ data: [], error: null }),
-      supabase.rpc("workflow_action_center", {})
+      supabase.rpc("workflow_action_center", {}),
+      supabase
+        .from("tickets")
+        .select("timestamp")
+        .or(pendingFilter)
+        .limit(2000)
     ]);
 
     if (pendingCountResult.error) {
@@ -321,6 +346,42 @@ async function loadDashboardData(): Promise<DashboardData> {
       return !ticket || !isClosedTicketState(ticket.state);
     });
 
+    const pendingTimestamps = (pendingTimestampsResult.data as Array<{ timestamp: string | null }> | null) || [];
+    const agingSummary: Record<TicketAgeCategory, number> = { normal: 0, warning: 0, overdue: 0, critical: 0 };
+    const now = new Date();
+
+    for (const row of pendingTimestamps) {
+      const ageDays = getTicketAgeDays(row.timestamp, now);
+      const cat = getTicketAgeCategory(ageDays);
+      agingSummary[cat]++;
+    }
+
+    let evidenceReadiness: EvidenceReadinessDepartment[] = [];
+    if (latestBatch) {
+      const depsResult = await supabase
+        .from("report_batch_departments")
+        .select("dept_name, evidence_file_url, evidence_review_status, evidence_uploaded_at, evidence_version_number")
+        .eq("report_batch_id", latestBatch.id)
+        .order("dept_name", { ascending: true });
+
+      if (!depsResult.error && depsResult.data) {
+        evidenceReadiness = depsResult.data.map((row) => {
+          let status: "ready" | "draft" | "missing" = "missing";
+          if (row.evidence_review_status === "approved" || row.evidence_file_url) {
+            status = "ready";
+          } else if (row.evidence_review_status === "submitted" || row.evidence_review_status === "draft") {
+            status = "draft";
+          }
+          return {
+            dept_name: row.dept_name,
+            status,
+            uploaded_at: row.evidence_uploaded_at || null,
+            version_number: row.evidence_version_number || null
+          };
+        });
+      }
+    }
+
     return {
       status: "ready",
       latestBatch,
@@ -330,6 +391,8 @@ async function loadDashboardData(): Promise<DashboardData> {
       externalAgencyCount,
       reopenedTicketCount: reopenedTicketCountResult.count || 0,
       actionableChangeCount: actionableChangeCountResult.count || 0,
+      agingSummary,
+      evidenceReadiness,
       departmentSummary: (departmentSummaryResult.data as DepartmentSummaryRow[] | null) || [],
       unassignedTickets,
       recentChanges: buildRecentTicketChanges(recentRows),
