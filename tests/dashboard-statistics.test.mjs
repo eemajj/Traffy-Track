@@ -91,3 +91,18 @@ test("isExternalAgencyOrgResponse accurately distinguishes external agency respo
   assert.deepEqual(isExternalAgencyOrgResponse("การไฟฟ้านครหลวง, ฝ่ายเทศกิจ เขตทวีวัฒนา"), { isExternal: false, externalOrgName: null });
   assert.deepEqual(isExternalAgencyOrgResponse(null), { isExternal: false, externalOrgName: null });
 });
+
+test("isDistrictRelatedTicket filters out pure external tickets while preserving district-transferred tickets", async () => {
+  const { isDistrictRelatedTicket } = await import("../lib/import/normalize.ts");
+
+  // Pure external ticket (no district dept or org) -> Excluded
+  assert.equal(isDistrictRelatedTicket({ org_list: ["การไฟฟ้านครหลวง"], dept_list: [] }), false);
+  assert.equal(isDistrictRelatedTicket({ org_list: ["การประปานครหลวง"], dept_list: [] }), false);
+
+  // External ticket transferred to district department -> Preserved
+  assert.equal(isDistrictRelatedTicket({ org_list: ["การไฟฟ้านครหลวง", "ฝ่ายโยธา เขตทวีวัฒนา"], dept_list: ["ฝ่ายโยธา เขตทวีวัฒนา"] }), true);
+
+  // District intake ticket -> Preserved
+  assert.equal(isDistrictRelatedTicket({ org_list: ["สำนักงานเขตทวีวัฒนา"], dept_list: [] }), true);
+});
+

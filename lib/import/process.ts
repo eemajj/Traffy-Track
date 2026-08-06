@@ -10,7 +10,7 @@ import {
   heartbeatImportBatch,
   markImportBatchFailed
 } from "@/lib/import/job-service";
-import { normalizeCsvRow, normalizeTicket, validateCsvColumns } from "@/lib/import/normalize";
+import { isDistrictRelatedTicket, normalizeCsvRow, normalizeTicket, validateCsvColumns } from "@/lib/import/normalize";
 import { deleteImportSourceIfTerminal, downloadImportSource, removeImportSourceWhenTerminal } from "@/lib/import/storage-service";
 import type { ExistingTicketSnapshot, ImportSummary, TicketHistoryInsert, TicketRecord } from "@/lib/import/types";
 import { createSupabaseAdminClient } from "@/lib/supabase";
@@ -104,7 +104,9 @@ export async function processImportCsvText(
     validateCsvRows(normalizedRows);
     await heartbeat(importBatchId, options?.leaseToken);
 
-    const normalizedTicketRecords = normalizedRows.map((row) => normalizeTicket(row));
+    const normalizedTicketRecords = normalizedRows
+      .map((row) => normalizeTicket(row))
+      .filter((ticket) => isDistrictRelatedTicket(ticket));
     const { ticketRecords, duplicateRows } = dedupeTicketsById(normalizedTicketRecords);
     const uniqueTicketIds = [...new Set(ticketRecords.map((row) => row.ticket_id))];
     const existingTicketMap = new Map<string, ExistingTicketSnapshot>();

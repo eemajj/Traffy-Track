@@ -163,6 +163,23 @@ export function deriveDepartmentList(orgList: string[], districtName = DEFAULT_D
   );
 }
 
+export function isDistrictRelatedTicket(
+  ticket: { org_list: string[]; dept_list: string[] },
+  districtName = DEFAULT_DISTRICT_NAME
+): boolean {
+  if (ticket.dept_list && ticket.dept_list.length > 0) {
+    return true;
+  }
+
+  if (ticket.org_list && ticket.org_list.length > 0) {
+    return ticket.org_list.some(
+      (entry) => entry.includes(districtName) || entry.includes("ทวีวัฒนา") || entry.startsWith("ฝ่าย")
+    );
+  }
+
+  return false;
+}
+
 export function normalizeTicket(row: CsvRow): TicketRecord {
   const orgList = parseOrgList(row.org_response);
   const deptList = deriveDepartmentList(orgList);
