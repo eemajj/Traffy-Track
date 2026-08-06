@@ -61,6 +61,7 @@ type DashboardPageProps = {
     from?: string | string[];
     to?: string | string[];
     scope?: string | string[];
+    dept?: string | string[];
   }>;
 };
 
@@ -68,11 +69,12 @@ export default async function DashboardPage(props: DashboardPageProps) {
   const searchParams = (await props.searchParams) || {};
   const range = normalizeDashboardDateRange(searchParams);
   const rawScope = Array.isArray(searchParams.scope) ? searchParams.scope[0] : searchParams.scope;
+  const selectedDept = Array.isArray(searchParams.dept) ? searchParams.dept[0] : searchParams.dept;
   const currentScope: DashboardMetricScope = rawScope === "external" ? "external" : rawScope === "all" ? "all" : "district";
 
   const [data, statistics] = await Promise.all([
     getDashboardData(currentScope),
-    getDashboardStatistics(range, currentScope)
+    getDashboardStatistics(range, currentScope, selectedDept)
   ]);
 
   const fromParam = Array.isArray(searchParams.from) ? searchParams.from[0] : searchParams.from;
@@ -88,7 +90,7 @@ export default async function DashboardPage(props: DashboardPageProps) {
       description="สรุปสถานะเรื่องตามช่วงวันที่ด้วยสูตรเดียวกับ Traffy พร้อมงานคงค้างและรายการที่ต้องดำเนินการในระบบ"
     >
       <div className="space-y-10">
-        <TraffyStatistics data={statistics} scope={currentScope} />
+        <TraffyStatistics data={statistics} scope={currentScope} selectedDept={selectedDept} />
 
         <section aria-labelledby="local-operations-title" className="space-y-5">
           <div className="border-b border-border pb-4">

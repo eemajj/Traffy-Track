@@ -19,7 +19,8 @@ const PAGE_SIZE = 1000;
 
 async function loadDashboardStatistics(
   range: DashboardDateRange,
-  scope: DashboardMetricScope = "district"
+  scope: DashboardMetricScope = "district",
+  dept?: string
 ): Promise<DashboardStatisticsData> {
   const rangeError = validateDashboardDateRange(range);
   if (rangeError) return { status: "invalid_range", range, message: rangeError };
@@ -58,7 +59,11 @@ async function loadDashboardStatistics(
           })
         : page;
 
-      tickets.push(...filteredPage);
+      const finalPage = dept
+        ? filteredPage.filter((t) => t.dept_list && t.dept_list.includes(dept))
+        : filteredPage;
+
+      tickets.push(...finalPage);
       if (page.length < PAGE_SIZE) break;
     }
 
@@ -75,12 +80,17 @@ async function loadDashboardStatistics(
 export const DASHBOARD_STATISTICS_CACHE_TAG = "dashboard-statistics";
 
 const getCachedDashboardStatistics = unstable_cache(
-  async (rangeKey: string, fromDate: string, toDate: string, scope: DashboardMetricScope) =>
-    loadDashboardStatistics({ from: fromDate, to: toDate }, scope),
+  async (rangeKey: string, fromDate: string, toDate: string, scope: DashboardMetricScope, dept?: string) =>
+    loadDashboardStatistics({ from: fromDate, to: toDate }, scope, dept),
   [DASHBOARD_STATISTICS_CACHE_TAG],
   { revalidate: 60, tags: [DASHBOARD_STATISTICS_CACHE_TAG] }
 );
 
-export function getDashboardStatistics(range: DashboardDateRange, scope: DashboardMetricScope = "district") {
-  return getCachedDashboardStatistics(`${range.from}_${range.to}_${scope}`, range.from, range.to, scope);
+export function getDashboardStatistics(
+  range: DashboardDateRange,
+  scope: DashboardMetricScope = "district",
+  dept?: string
+) {
+  const cacheKey = `${range.from}_${range.to}_${scope}_${dept || "all"}`;
+  return getCachedDashboardStatistics(cacheKey, range.from, range.to, scope, dept);
 }

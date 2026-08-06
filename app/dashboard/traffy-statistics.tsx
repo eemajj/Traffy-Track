@@ -152,68 +152,129 @@ function StatisticsContent({ data }: { data: DashboardStatisticsReady }) {
   );
 }
 
-function getScopeHref(range: { from: string; to: string }, targetScope: string) {
-  return `/dashboard?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&scope=${targetScope}`;
+const DISTRICT_DEPARTMENTS = [
+  "ฝ่ายโยธา เขตทวีวัฒนา",
+  "ฝ่ายเทศกิจ เขตทวีวัฒนา",
+  "ฝ่ายรักษาความสะอาดฯ เขตทวีวัฒนา",
+  "ฝ่ายสิ่งแวดล้อมฯ เขตทวีวัฒนา",
+  "ฝ่ายรายได้ เขตทวีวัฒนา",
+  "ฝ่ายปกครอง เขตทวีวัฒนา",
+  "ฝ่ายพัฒนาชุมชนฯ เขตทวีวัฒนา",
+  "ฝ่ายคลัง เขตทวีวัฒนา"
+];
+
+function getScopeHref(range: { from: string; to: string }, targetScope: string, dept = "") {
+  const search = new URLSearchParams({
+    from: range.from,
+    to: range.to,
+    scope: targetScope
+  });
+  if (dept) search.set("dept", dept);
+  return `/dashboard?${search.toString()}`;
 }
 
-export function TraffyStatistics({ data, scope = "district" }: { data: DashboardStatisticsData; scope?: string }) {
+export function TraffyStatistics({
+  data,
+  scope = "district",
+  selectedDept = ""
+}: {
+  data: DashboardStatisticsData;
+  scope?: string;
+  selectedDept?: string;
+}) {
   const range = data.range;
   const currentScope = scope === "external" ? "external" : scope === "all" ? "all" : "district";
 
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-border/80 bg-white p-5 shadow-panel">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">📊</span>
-              <h1 className="text-xl font-bold tracking-[-0.02em] text-ink sm:text-2xl">
-                {currentScope === "district"
-                  ? "สถิติเรื่องที่เขตทวีวัฒนาดำเนินการจริง (8 ฝ่าย)"
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📊</span>
+                <h1 className="text-xl font-bold tracking-[-0.02em] text-ink sm:text-2xl">
+                  {currentScope === "district"
+                    ? `สถิติเรื่องที่เขตทวีวัฒนาดำเนินการจริง (8 ฝ่าย)${selectedDept ? ` - ${selectedDept}` : ""}`
+                    : currentScope === "external"
+                    ? "สถิติเคสทางผ่าน / ส่งต่อหน่วยงานภายนอก"
+                    : `สถิติเรื่องทั้งหมดในระบบเขตทวีวัฒนา${selectedDept ? ` - ${selectedDept}` : ""}`}
+                </h1>
+              </div>
+              <p className="mt-1.5 text-sm leading-6 text-muted">
+                {selectedDept
+                  ? `แสดงสถิติตัวเลขย้อนหลังและสถานะเรื่องเฉพาะของ "${selectedDept}"`
+                  : currentScope === "district"
+                  ? "คำนวณและแสดงผลสถิติเฉพาะเคสที่อยู่ในความรับผิดชอบและดำเนินการโดยเจ้าหน้าที่เขตทวีวัฒนาโดยตรง (หักเคสทางผ่านภายนอกออกแล้ว)"
                   : currentScope === "external"
-                  ? "สถิติเคสทางผ่าน / ส่งต่อหน่วยงานภายนอก"
-                  : "สถิติเรื่องทั้งหมดในระบบเขตทวีวัฒนา"}
-              </h1>
+                  ? "แสดงสถิติเฉพาะเคสทางผ่านที่ประสานส่งต่อให้ การไฟฟ้า / การประปา / สน.ท้องที่ ดำเนินการต่อ"
+                  : "แสดงภาพรวมสถิติทุกเรื่องที่รับแจ้งในพิกัดเขตทวีวัฒนา ทั้งงานของเขตและงานส่งต่อภายนอก"}
+              </p>
             </div>
-            <p className="mt-1.5 text-sm leading-6 text-muted">
-              {currentScope === "district"
-                ? "คำนวณและแสดงผลสถิติเฉพาะเคสที่อยู่ในความรับผิดชอบและดำเนินการโดยเจ้าหน้าที่เขตทวีวัฒนาโดยตรง (หักเคสทางผ่านภายนอกออกแล้ว)"
-                : currentScope === "external"
-                ? "แสดงสถิติเฉพาะเคสทางผ่านที่ประสานส่งต่อให้ การไฟฟ้า / การประปา / สน.ท้องที่ ดำเนินการต่อ"
-                : "แสดงภาพรวมสถิติทุกเรื่องที่รับแจ้งในพิกัดเขตทวีวัฒนา ทั้งงานของเขตและงานส่งต่อภายนอก"}
-            </p>
+            <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-border bg-surface p-1.5 text-xs font-semibold">
+              <Link
+                href={getScopeHref(range, "district", selectedDept)}
+                className={`rounded-xl px-3.5 py-2 transition-all ${
+                  currentScope === "district"
+                    ? "bg-brand text-white shadow-sm font-bold"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                🟢 เฉพาะเรื่องของเขต
+              </Link>
+              <Link
+                href={getScopeHref(range, "external", selectedDept)}
+                className={`rounded-xl px-3.5 py-2 transition-all ${
+                  currentScope === "external"
+                    ? "bg-blue-600 text-white shadow-sm font-bold"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                🌐 เคสทางผ่าน/ภายนอก
+              </Link>
+              <Link
+                href={getScopeHref(range, "all", selectedDept)}
+                className={`rounded-xl px-3.5 py-2 transition-all ${
+                  currentScope === "all"
+                    ? "bg-slate-800 text-white shadow-sm font-bold"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                📊 เรื่องทั้งหมดในระบบ
+              </Link>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-border bg-surface p-1.5 text-xs font-semibold">
+
+          {/* Department Quick Filter Bar */}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+            <span className="mr-1 text-xs font-semibold text-muted">🏢 เลือกฝ่าย:</span>
             <Link
-              href={getScopeHref(range, "district")}
-              className={`rounded-xl px-3.5 py-2 transition-all ${
-                currentScope === "district"
-                  ? "bg-brand text-white shadow-sm font-bold"
-                  : "text-muted hover:text-ink"
+              href={getScopeHref(range, currentScope, "")}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                !selectedDept
+                  ? "bg-ink text-white shadow-xs"
+                  : "bg-surface text-muted hover:bg-surface-strong hover:text-ink"
               }`}
             >
-              🟢 เฉพาะเรื่องของเขต
+              ทุกฝ่ายในเขต
             </Link>
-            <Link
-              href={getScopeHref(range, "external")}
-              className={`rounded-xl px-3.5 py-2 transition-all ${
-                currentScope === "external"
-                  ? "bg-blue-600 text-white shadow-sm font-bold"
-                  : "text-muted hover:text-ink"
-              }`}
-            >
-              🌐 เคสทางผ่าน/ภายนอก
-            </Link>
-            <Link
-              href={getScopeHref(range, "all")}
-              className={`rounded-xl px-3.5 py-2 transition-all ${
-                currentScope === "all"
-                  ? "bg-slate-800 text-white shadow-sm font-bold"
-                  : "text-muted hover:text-ink"
-              }`}
-            >
-              📊 เรื่องทั้งหมดในระบบ
-            </Link>
+            {DISTRICT_DEPARTMENTS.map((dept) => {
+              const isSelected = selectedDept === dept;
+              const shortName = dept.replace(" เขตทวีวัฒนา", "");
+              return (
+                <Link
+                  key={dept}
+                  href={getScopeHref(range, currentScope, dept)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                    isSelected
+                      ? "bg-brand text-white shadow-xs"
+                      : "bg-surface text-muted hover:bg-surface-strong hover:text-ink"
+                  }`}
+                >
+                  {shortName}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -221,6 +282,7 @@ export function TraffyStatistics({ data, scope = "district" }: { data: Dashboard
       <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="dashboard-range-title">
         <form method="get" className="grid gap-4 xl:grid-cols-[auto_1fr_1fr_auto] xl:items-end">
           <input type="hidden" name="scope" value={currentScope} />
+          {selectedDept ? <input type="hidden" name="dept" value={selectedDept} /> : null}
           <fieldset className="min-w-0">
             <legend id="dashboard-range-title" className="text-sm font-semibold text-ink">ช่วงวันที่รับแจ้ง</legend>
             <div className="mt-2 flex flex-wrap gap-2">
