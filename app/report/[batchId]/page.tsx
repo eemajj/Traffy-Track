@@ -63,14 +63,17 @@ export default async function ReportBatchDetailPage(props: ReportBatchDetailPage
               <p className="text-sm text-muted">สร้างเมื่อ {formatDateTime(data.batch.created_at)}</p>
               {data.batch.note ? <p className="text-sm leading-6 text-ink">{data.batch.note}</p> : null}
             </div>
-            <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-muted">
-              <Link
+            <div className="flex flex-col gap-3 rounded-2xl border border-brand/20 bg-brand/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-ink">📦 ชุดเอกสารรายงานผู้บริหารครบถ้วน (1-Click Executive Package)</p>
+                <p className="mt-0.5 text-xs text-muted">รวมไฟล์ PDF สรุปภาพรวมเขต + PDF รายฝ่าย + Excel รายฝ่าย ครบถ้วนในไฟล์ ZIP เดียว</p>
+              </div>
+              <a
                 href={`/api/report/${params.batchId}/export-all`}
-                className="font-semibold text-brand transition hover:text-brand-deep"
+                className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep"
               >
-                ดาวน์โหลด Excel ทั้งหมด
-              </Link>{" "}
-              หรือจัดการไฟล์ Excel และหลักฐานแยกตามฝ่ายด้านล่าง
+                <span>📦</span> ดาวน์โหลดชุดผู้บริหาร (ZIP)
+              </a>
             </div>
           </div>
 
