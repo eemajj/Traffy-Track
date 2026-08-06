@@ -152,18 +152,80 @@ function StatisticsContent({ data }: { data: DashboardStatisticsReady }) {
   );
 }
 
+function getScopeHref(range: { from: string; to: string }, targetScope: string) {
+  return `/dashboard?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&scope=${targetScope}`;
+}
+
 export function TraffyStatistics({ data, scope = "district" }: { data: DashboardStatisticsData; scope?: string }) {
   const range = data.range;
+  const currentScope = scope === "external" ? "external" : scope === "all" ? "all" : "district";
+
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-border/80 bg-white p-5 shadow-panel">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">📊</span>
+              <h1 className="text-xl font-bold tracking-[-0.02em] text-ink sm:text-2xl">
+                {currentScope === "district"
+                  ? "สถิติเรื่องที่เขตทวีวัฒนาดำเนินการจริง (8 ฝ่าย)"
+                  : currentScope === "external"
+                  ? "สถิติเคสทางผ่าน / ส่งต่อหน่วยงานภายนอก"
+                  : "สถิติเรื่องทั้งหมดในระบบเขตทวีวัฒนา"}
+              </h1>
+            </div>
+            <p className="mt-1.5 text-sm leading-6 text-muted">
+              {currentScope === "district"
+                ? "คำนวณและแสดงผลสถิติเฉพาะเคสที่อยู่ในความรับผิดชอบและดำเนินการโดยเจ้าหน้าที่เขตทวีวัฒนาโดยตรง (หักเคสทางผ่านภายนอกออกแล้ว)"
+                : currentScope === "external"
+                ? "แสดงสถิติเฉพาะเคสทางผ่านที่ประสานส่งต่อให้ การไฟฟ้า / การประปา / สน.ท้องที่ ดำเนินการต่อ"
+                : "แสดงภาพรวมสถิติทุกเรื่องที่รับแจ้งในพิกัดเขตทวีวัฒนา ทั้งงานของเขตและงานส่งต่อภายนอก"}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-border bg-surface p-1.5 text-xs font-semibold">
+            <Link
+              href={getScopeHref(range, "district")}
+              className={`rounded-xl px-3.5 py-2 transition-all ${
+                currentScope === "district"
+                  ? "bg-brand text-white shadow-sm font-bold"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              🟢 เฉพาะเรื่องของเขต
+            </Link>
+            <Link
+              href={getScopeHref(range, "external")}
+              className={`rounded-xl px-3.5 py-2 transition-all ${
+                currentScope === "external"
+                  ? "bg-blue-600 text-white shadow-sm font-bold"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              🌐 เคสทางผ่าน/ภายนอก
+            </Link>
+            <Link
+              href={getScopeHref(range, "all")}
+              className={`rounded-xl px-3.5 py-2 transition-all ${
+                currentScope === "all"
+                  ? "bg-slate-800 text-white shadow-sm font-bold"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              📊 เรื่องทั้งหมดในระบบ
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="dashboard-range-title">
         <form method="get" className="grid gap-4 xl:grid-cols-[auto_1fr_1fr_auto] xl:items-end">
-          <input type="hidden" name="scope" value={scope} />
+          <input type="hidden" name="scope" value={currentScope} />
           <fieldset className="min-w-0">
             <legend id="dashboard-range-title" className="text-sm font-semibold text-ink">ช่วงวันที่รับแจ้ง</legend>
             <div className="mt-2 flex flex-wrap gap-2">
-              {[30, 90, 180].map((days) => <Link key={days} href={getPresetHref(range.to, days, scope)} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">{days} วัน</Link>)}
-              <Link href={`/dashboard?scope=${encodeURIComponent(scope)}`} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">ทั้งหมด</Link>
+              {[30, 90, 180].map((days) => <Link key={days} href={getPresetHref(range.to, days, currentScope)} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">{days} วัน</Link>)}
+              <Link href={`/dashboard?scope=${encodeURIComponent(currentScope)}`} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">ทั้งหมด</Link>
             </div>
           </fieldset>
           <label className="space-y-2">

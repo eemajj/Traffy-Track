@@ -50,6 +50,12 @@ async function loadDashboardStatistics(
             const { isExternal } = isExternalAgencyOrgResponse(t.org_response);
             return hasDept || !isExternal;
           })
+        : scope === "external"
+        ? page.filter((t) => {
+            const hasDept = t.dept_list && t.dept_list.length > 0;
+            const { isExternal } = isExternalAgencyOrgResponse(t.org_response);
+            return !hasDept && (isExternal || t.state === "ส่งต่อ(ใหม่)");
+          })
         : page;
 
       tickets.push(...filteredPage);

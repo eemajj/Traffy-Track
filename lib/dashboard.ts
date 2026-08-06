@@ -86,7 +86,7 @@ export type EvidenceReadinessDepartment = {
   version_number: number | null;
 };
 
-export type DashboardMetricScope = "district" | "all";
+export type DashboardMetricScope = "district" | "external" | "all";
 
 export type DashboardData =
   | {
