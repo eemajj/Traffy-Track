@@ -16,6 +16,8 @@ import {
   getCaseStatusClassName as getStatusClassName
 } from "@/lib/cases/page-model";
 
+import { isExternalAgencyOrgResponse } from "@/lib/dashboard/statistics";
+
 export const dynamic = "force-dynamic";
 
 type CasesPageProps = {
@@ -32,6 +34,8 @@ type CasesPageProps = {
 };
 
 function CaseCard({ item }: { item: CaseListItem }) {
+  const isExternal = isExternalAgencyOrgResponse(item.org_response).isExternal || item.state === "ส่งต่อ(ใหม่)";
+
   return (
     <article className="rounded-2xl border border-border/80 bg-white p-5 shadow-panel">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -43,6 +47,11 @@ function CaseCard({ item }: { item: CaseListItem }) {
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClassName(item.state)}`}>
               {item.state || "ไม่ระบุสถานะ"}
             </span>
+            {isExternal ? (
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                🌐 หน่วยงานภายนอก
+              </span>
+            ) : null}
             {item.reopenedInLatestBatch ? (
               <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
                 เปิดกลับ

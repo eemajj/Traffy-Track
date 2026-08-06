@@ -111,8 +111,13 @@ export default async function DashboardPage(props: DashboardPageProps) {
               <dd className="mt-1 text-2xl font-semibold text-ink">{formatNumber(data.latestBatch?.new_tickets ?? 0)}</dd>
             </div>
             <div className="bg-white p-4 sm:p-5">
-              <dt className="text-sm text-muted">ไม่มีฝ่ายใน CityData</dt>
-              <dd className="mt-1 text-2xl font-semibold text-danger">{formatNumber(data.unassignedCount)}</dd>
+              <dt className="text-sm text-muted">ยังไม่พบฝ่าย / ภายนอก</dt>
+              <dd className="mt-1 text-2xl font-semibold text-danger">
+                {formatNumber(data.unassignedCount)}
+                <span className="ml-1.5 block text-xs font-normal text-muted">
+                  (เขต {formatNumber(data.districtUnassignedCount)} / ภายนอก {formatNumber(data.externalAgencyCount)})
+                </span>
+              </dd>
             </div>
             <div className="bg-white p-4 sm:p-5">
               <dt className="text-sm text-muted">เปิดกลับรอบล่าสุด</dt>
@@ -186,23 +191,41 @@ export default async function DashboardPage(props: DashboardPageProps) {
 
           <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
             <section className="rounded-2xl border border-warning/20 bg-warning/5 p-6">
-              <h2 className="text-xl font-bold text-warning">ยังไม่มีฝ่ายในข้อมูล CityData</h2>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-bold text-warning">ยังไม่มีฝ่ายในเขต / ประสานหน่วยงานภายนอก</h2>
+                <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">
+                    ในเขตยังไม่พบฝ่าย: {formatNumber(data.districtUnassignedCount)}
+                  </span>
+                  <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-800">
+                    หน่วยงานภายนอก: {formatNumber(data.externalAgencyCount)}
+                  </span>
+                </div>
+              </div>
               <p className="mt-2 text-sm leading-6 text-warning">
-                พบ {formatNumber(data.unassignedCount)} เรื่องคงค้างที่ไฟล์ต้นทางยังไม่ระบุฝ่าย ระบบแสดงเพื่อการตรวจสอบโดยไม่แก้ไขข้อมูลต้นทาง
+                พบ {formatNumber(data.unassignedCount)} เรื่องคงค้างที่ไม่พบฝ่ายในเขตทวีวัฒนา (แยกเป็น {formatNumber(data.districtUnassignedCount)} เรื่องของเขตที่ยังไม่ระบุฝ่าย และ {formatNumber(data.externalAgencyCount)} เรื่องของหน่วยงานภายนอก)
               </p>
               <div className="mt-4 space-y-3">
                 {data.unassignedTickets.length === 0 ? (
                   <p className="text-sm text-warning">ไม่มีเรื่องในหมวดนี้</p>
                 ) : (
                   data.unassignedTickets.map((ticket) => (
-                    <article key={ticket.ticket_id} className="rounded-xl border border-danger/15 bg-white p-4">
+                    <article key={ticket.ticket_id} className={`rounded-xl border p-4 ${ticket.isExternal ? "border-blue-200 bg-blue-50/40" : "border-danger/15 bg-white"}`}>
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="font-mono text-xs text-muted">{ticket.ticket_id}</p>
                           <h3 className="mt-1 text-sm font-semibold text-ink">{ticket.state || "ไม่ระบุสถานะ"}</h3>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">ไม่มีฝ่ายใน CityData</span>
+                          {ticket.isExternal ? (
+                            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                              🌐 หน่วยงานภายนอก: {ticket.externalOrgName || formatOrgResponse(ticket.org_response)}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
+                              ⚠️ ไม่พบฝ่ายในเขต
+                            </span>
+                          )}
                           <span className="text-xs text-muted">{formatDateTime(ticket.last_activity)}</span>
                         </div>
                       </div>

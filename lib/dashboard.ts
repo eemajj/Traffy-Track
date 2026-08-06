@@ -20,7 +20,7 @@ type DepartmentSummaryRow = {
   pending_count: number;
 };
 
-type UnassignedTicketRow = {
+export type UnassignedTicketRow = {
   ticket_id: string;
   state: string | null;
   comment: string | null;
@@ -28,7 +28,13 @@ type UnassignedTicketRow = {
   last_activity: string | null;
   org_response: string | null;
   dept_list: string[] | null;
+  isExternal?: boolean;
+  externalOrgName?: string | null;
 };
+
+import { isExternalAgencyOrgResponse } from "@/lib/dashboard/statistics";
+
+export { isExternalAgencyOrgResponse };
 
 type TicketRelation = {
   state: string | null;
@@ -81,6 +87,8 @@ export type DashboardData =
       latestBatch: LatestImportBatch | null;
       pendingTicketCount: number;
       unassignedCount: number;
+      districtUnassignedCount: number;
+      externalAgencyCount: number;
       reopenedTicketCount: number;
       actionableChangeCount: number;
       departmentSummary: DepartmentSummaryRow[];
@@ -210,9 +218,10 @@ async function loadDashboardData(): Promise<DashboardData> {
         .or(pendingFilter),
       supabase
         .from("tickets")
-        .select("ticket_id", { count: "exact", head: true })
+        .select("ticket_id, org_response")
         .or(pendingFilter)
-        .or("dept_list.is.null,dept_list.eq.{}"),
+        .or("dept_list.is.null,dept_list.eq.{}")
+        .limit(1000),
       supabase.rpc("dashboard_pending_by_department"),
       supabase
         .from("tickets")
@@ -284,6 +293,29 @@ async function loadDashboardData(): Promise<DashboardData> {
       throw new Error(`โหลดศูนย์งานวันนี้ไม่สำเร็จ: ${actionCenterResult.error.message}`);
     }
 
+    const allUnassignedRows = (unassignedCountResult.data as Array<{ ticket_id: string; org_response: string | null }> | null) || [];
+    let districtUnassignedCount = 0;
+    let externalAgencyCount = 0;
+
+    for (const row of allUnassignedRows) {
+      const { isExternal } = isExternalAgencyOrgResponse(row.org_response);
+      if (isExternal) {
+        externalAgencyCount++;
+      } else {
+        districtUnassignedCount++;
+      }
+    }
+
+    const rawUnassignedTickets = (unassignedTicketsResult.data as UnassignedTicketRow[] | null) || [];
+    const unassignedTickets = rawUnassignedTickets.map((ticket) => {
+      const { isExternal, externalOrgName } = isExternalAgencyOrgResponse(ticket.org_response);
+      return {
+        ...ticket,
+        isExternal,
+        externalOrgName
+      };
+    });
+
     const recentRows = ((recentChangesResult.data as RecentChangeRow[] | null) || []).filter((change) => {
       const ticket = normalizeTicketRelation(change.tickets);
       return !ticket || !isClosedTicketState(ticket.state);
@@ -293,11 +325,13 @@ async function loadDashboardData(): Promise<DashboardData> {
       status: "ready",
       latestBatch,
       pendingTicketCount: pendingCountResult.count || 0,
-      unassignedCount: unassignedCountResult.count || 0,
+      unassignedCount: allUnassignedRows.length,
+      districtUnassignedCount,
+      externalAgencyCount,
       reopenedTicketCount: reopenedTicketCountResult.count || 0,
       actionableChangeCount: actionableChangeCountResult.count || 0,
       departmentSummary: (departmentSummaryResult.data as DepartmentSummaryRow[] | null) || [],
-      unassignedTickets: (unassignedTicketsResult.data as UnassignedTicketRow[] | null) || [],
+      unassignedTickets,
       recentChanges: buildRecentTicketChanges(recentRows),
       actionCenter: ((actionCenterResult.data || []) as Array<{
         item_type: "report"; resource_id: string; title: string; detail: string;

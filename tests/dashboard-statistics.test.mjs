@@ -81,3 +81,13 @@ test("finished low-rating feedback uses star 1-2 and the finished denominator", 
   assert.equal(result.byThis.availability, "unavailable");
   assert.equal(result.resolutionTime.availability, "unavailable");
 });
+
+test("isExternalAgencyOrgResponse accurately distinguishes external agency responses from district departments", async () => {
+  const { isExternalAgencyOrgResponse } = await import("../lib/dashboard/statistics.ts");
+
+  assert.deepEqual(isExternalAgencyOrgResponse("การไฟฟ้านครหลวง"), { isExternal: true, externalOrgName: "การไฟฟ้านครหลวง" });
+  assert.deepEqual(isExternalAgencyOrgResponse("การประปานครหลวง, สำนักการระบายน้ำ"), { isExternal: true, externalOrgName: "สำนักการระบายน้ำ" });
+  assert.deepEqual(isExternalAgencyOrgResponse("ฝ่ายโยธา เขตทวีวัฒนา"), { isExternal: false, externalOrgName: null });
+  assert.deepEqual(isExternalAgencyOrgResponse("การไฟฟ้านครหลวง, ฝ่ายเทศกิจ เขตทวีวัฒนา"), { isExternal: false, externalOrgName: null });
+  assert.deepEqual(isExternalAgencyOrgResponse(null), { isExternal: false, externalOrgName: null });
+});

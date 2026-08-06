@@ -15,7 +15,7 @@ import { CLOSED_TICKET_STATES, buildPendingStatesOrFilter, isClosedTicketState }
 const DEFAULT_CASES_PAGE_SIZE = 50;
 const ALLOWED_CASES_PAGE_SIZES = [10, 50, 100] as const;
 
-export type CaseListView = "pending" | "reopened" | "status-changed" | "unassigned" | "closed" | "all";
+export type CaseListView = "pending" | "reopened" | "status-changed" | "unassigned" | "external" | "closed" | "all";
 
 export type { CaseListSort } from "@/lib/case-sort";
 
@@ -137,7 +137,7 @@ export type CaseDetailData =
     };
 
 function normalizeView(value: string | undefined): CaseListView {
-  if (value === "reopened" || value === "status-changed" || value === "unassigned" || value === "closed" || value === "all") {
+  if (value === "reopened" || value === "status-changed" || value === "unassigned" || value === "external" || value === "closed" || value === "all") {
     return value;
   }
 
@@ -248,6 +248,12 @@ function addTicketFilters<QueryBuilder extends TicketFilterQuery>(
   if (filters.view === "unassigned") {
     nextQuery = nextQuery.or(buildPendingStatesOrFilter(prefix)).or(
       `${prefix}dept_list.is.null,${prefix}dept_list.eq.{}`
+    );
+  }
+
+  if (filters.view === "external") {
+    nextQuery = nextQuery.or(buildPendingStatesOrFilter(prefix)).or(
+      `${prefix}dept_list.is.null,${prefix}dept_list.eq.{},${prefix}state.eq.ส่งต่อ(ใหม่)`
     );
   }
 

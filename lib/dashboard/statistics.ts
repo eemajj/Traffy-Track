@@ -17,6 +17,26 @@ export const TRAFFY_STATUS_ORDER = [
 
 export type TraffyStatusName = (typeof TRAFFY_STATUS_ORDER)[number];
 
+export function isExternalAgencyOrgResponse(orgResponse: string | null): { isExternal: boolean; externalOrgName: string | null } {
+  if (!orgResponse) {
+    return { isExternal: false, externalOrgName: null };
+  }
+
+  const orgs = orgResponse.split(",").map((s) => s.trim()).filter(Boolean);
+  if (orgs.length === 0) {
+    return { isExternal: false, externalOrgName: null };
+  }
+
+  const finalOrg = orgs[orgs.length - 1];
+  const isDistrict = finalOrg.includes("เขตทวีวัฒนา") || finalOrg.includes("ทวีวัฒนา") || finalOrg.startsWith("ฝ่าย");
+
+  if (!isDistrict) {
+    return { isExternal: true, externalOrgName: finalOrg };
+  }
+
+  return { isExternal: false, externalOrgName: null };
+}
+
 export type DashboardStatisticsTicket = {
   ticket_id: string;
   type: string | null;

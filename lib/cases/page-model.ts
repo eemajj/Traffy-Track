@@ -1,13 +1,13 @@
 import { isClosedTicketState } from "../tickets.ts";
 
-type CaseListView = "pending" | "reopened" | "status-changed" | "unassigned" | "closed" | "all";
+export type CaseListView = "pending" | "reopened" | "status-changed" | "unassigned" | "external" | "closed" | "all";
 type CaseListSort = "updated-desc" | "updated-asc" | "received-desc" | "received-asc";
 
 export const caseViewLabels: Record<CaseListView, string> = {
   pending: "เรื่องคงค้าง", reopened: "เปิดกลับรอบล่าสุด", "status-changed": "เปลี่ยนสถานะรอบล่าสุด",
-  unassigned: "ไม่มีฝ่ายใน CityData", closed: "ปิดแล้ว", all: "ทั้งหมด"
+  unassigned: "ไม่มีฝ่ายใน CityData", external: "🌐 หน่วยงานภายนอก", closed: "ปิดแล้ว", all: "ทั้งหมด"
 };
-export const caseViews: CaseListView[] = ["pending", "reopened", "status-changed", "unassigned", "closed", "all"];
+export const caseViews: CaseListView[] = ["pending", "reopened", "status-changed", "unassigned", "external", "closed", "all"];
 export const casePageSizeOptions = [10, 50, 100];
 export const caseSortLabels: Record<CaseListSort, string> = {
   "updated-desc": "อัปเดตล่าสุด: ใหม่ → เก่า", "updated-asc": "อัปเดตล่าสุด: เก่า → ใหม่",
