@@ -72,7 +72,7 @@ export default async function DashboardPage(props: DashboardPageProps) {
 
   const [data, statistics] = await Promise.all([
     getDashboardData(currentScope),
-    getDashboardStatistics(range)
+    getDashboardStatistics(range, currentScope)
   ]);
 
   const fromParam = Array.isArray(searchParams.from) ? searchParams.from[0] : searchParams.from;
@@ -88,7 +88,7 @@ export default async function DashboardPage(props: DashboardPageProps) {
       description="สรุปสถานะเรื่องตามช่วงวันที่ด้วยสูตรเดียวกับ Traffy พร้อมงานคงค้างและรายการที่ต้องดำเนินการในระบบ"
     >
       <div className="space-y-10">
-        <TraffyStatistics data={statistics} />
+        <TraffyStatistics data={statistics} scope={currentScope} />
 
         <section aria-labelledby="local-operations-title" className="space-y-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">

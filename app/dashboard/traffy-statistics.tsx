@@ -24,11 +24,11 @@ function getStatusTone(name: TraffyStatusName) {
   return "bg-warning/5 text-ink";
 }
 
-function getPresetHref(to: string, days: number) {
+function getPresetHref(to: string, days: number, scope = "district") {
   const end = new Date(`${to}T12:00:00+07:00`);
   end.setUTCDate(end.getUTCDate() - (days - 1));
   const from = end.toISOString().slice(0, 10);
-  return `/dashboard?from=${from}&to=${to}`;
+  return `/dashboard?from=${from}&to=${to}&scope=${scope}`;
 }
 
 function StatusBoard({ data }: { data: DashboardStatisticsReady }) {
@@ -152,17 +152,18 @@ function StatisticsContent({ data }: { data: DashboardStatisticsReady }) {
   );
 }
 
-export function TraffyStatistics({ data }: { data: DashboardStatisticsData }) {
+export function TraffyStatistics({ data, scope = "district" }: { data: DashboardStatisticsData; scope?: string }) {
   const range = data.range;
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="dashboard-range-title">
         <form method="get" className="grid gap-4 xl:grid-cols-[auto_1fr_1fr_auto] xl:items-end">
+          <input type="hidden" name="scope" value={scope} />
           <fieldset className="min-w-0">
             <legend id="dashboard-range-title" className="text-sm font-semibold text-ink">ช่วงวันที่รับแจ้ง</legend>
             <div className="mt-2 flex flex-wrap gap-2">
-              {[30, 90, 180].map((days) => <Link key={days} href={getPresetHref(range.to, days)} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">{days} วัน</Link>)}
-              <Link href="/dashboard" className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">ทั้งหมด</Link>
+              {[30, 90, 180].map((days) => <Link key={days} href={getPresetHref(range.to, days, scope)} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">{days} วัน</Link>)}
+              <Link href={`/dashboard?scope=${encodeURIComponent(scope)}`} className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted hover:border-brand/40 hover:text-brand focus:outline-none focus:ring-4 focus:ring-[var(--ring)]">ทั้งหมด</Link>
             </div>
           </fieldset>
           <label className="space-y-2">
