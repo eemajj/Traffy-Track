@@ -23,7 +23,7 @@ const config: Config = {
         danger: "#b13a3a"
       },
       fontFamily: {
-        sans: ["IBM Plex Sans Thai", "IBM Plex Sans", "Noto Sans Thai", "system-ui", "sans-serif"]
+        sans: ["var(--font-noto-sans-thai)", "Noto Sans Thai", "system-ui", "sans-serif"]
       },
       boxShadow: {
         panel: "0 2px 8px rgba(0, 75, 48, 0.08)",

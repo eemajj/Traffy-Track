@@ -16,29 +16,29 @@ colors:
   danger: "#B13A3A"
 typography:
   display:
-    fontFamily: "IBM Plex Sans Thai, IBM Plex Sans, Noto Sans Thai, system-ui, sans-serif"
+    fontFamily: "Noto Sans Thai, system-ui, -apple-system, sans-serif"
     fontSize: "2rem"
     fontWeight: 600
     lineHeight: 1.1
     letterSpacing: "-0.02em"
   headline:
-    fontFamily: "IBM Plex Sans Thai, IBM Plex Sans, Noto Sans Thai, system-ui, sans-serif"
+    fontFamily: "Noto Sans Thai, system-ui, -apple-system, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.01em"
   title:
-    fontFamily: "IBM Plex Sans Thai, IBM Plex Sans, Noto Sans Thai, system-ui, sans-serif"
+    fontFamily: "Noto Sans Thai, system-ui, -apple-system, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 600
     lineHeight: 1.35
   body:
-    fontFamily: "IBM Plex Sans Thai, IBM Plex Sans, Noto Sans Thai, system-ui, sans-serif"
+    fontFamily: "Noto Sans Thai, system-ui, -apple-system, sans-serif"
     fontSize: "0.95rem"
     fontWeight: 400
     lineHeight: 1.6
   label:
-    fontFamily: "IBM Plex Sans Thai, IBM Plex Sans, Noto Sans Thai, system-ui, sans-serif"
+    fontFamily: "Noto Sans Thai, system-ui, -apple-system, sans-serif"
     fontSize: "0.8rem"
     fontWeight: 600
     lineHeight: 1.4
