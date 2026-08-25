@@ -119,6 +119,7 @@ export const ACCESS_PRESETS = {
 
 const ROUTE_PERMISSIONS: Array<{ prefix: string; permission: AppPermission }> = [
   { prefix: "/dashboard", permission: "dashboard:view" },
+  { prefix: "/docs/dashboard-calculation", permission: "dashboard:view" },
   { prefix: "/analytics", permission: "analytics:view" },
   { prefix: "/map", permission: "map:view" },
   { prefix: "/cases", permission: "cases:view" },
