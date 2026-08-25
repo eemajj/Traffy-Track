@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import {
   digestLegacyPasscode,
   hashPasscode,
@@ -190,15 +192,42 @@ export async function validatePasscodeProfileSession(input: {
   return mapProfile(row);
 }
 
+function safeSecretEqual(left: string, right: string) {
+  const leftBytes = Buffer.from(left, "utf8");
+  const rightBytes = Buffer.from(right, "utf8");
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+}
+
 export function getLegacyPasscodeAccess(passcode: string) {
-  if (env.appAdminPasscode && passcode === env.appAdminPasscode) {
+  if (env.appAdminPasscode && safeSecretEqual(passcode, env.appAdminPasscode)) {
     return { role: "admin" as const, label: "ผู้ดูแลระบบ (Environment)" };
   }
-  if (env.appPasscode && passcode === env.appPasscode) {
+  if (env.appPasscode && safeSecretEqual(passcode, env.appPasscode)) {
     return {
       role: env.appAdminPasscode ? ("operator" as const) : ("admin" as const),
       label: env.appAdminPasscode ? "เจ้าหน้าที่ (Environment)" : "ผู้ดูแลระบบ (Environment)"
     };
   }
   return null;
+}
+
+/**
+ * Legacy environment passcodes are a bootstrap path only. Once at least one
+ * DB-backed profile exists, they are disabled so shared env secrets cannot
+ * bypass per-person credentials, expiry, and rotation.
+ */
+export async function hasActivePasscodeProfile(): Promise<boolean> {
+  if (!hasSupabaseAdminEnv()) return false;
+  try {
+    const result = await createSupabaseAdminClient()
+      .from("passcode_profiles")
+      .select("id")
+      .eq("is_active", true)
+      .limit(1);
+    // Fail open while the table is unreachable/missing so bootstrap stays possible.
+    if (result.error) return false;
+    return (result.data?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }

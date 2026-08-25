@@ -10,7 +10,7 @@ import { consumeLoginRateLimit, recordAuditEvent } from "@/lib/audit";
 import { ACCESS_PRESETS, getFirstAllowedPath, getRoutePermission, hasPermission } from "@/lib/access-permissions";
 import { env } from "@/lib/env";
 import { getSafeNextPath } from "@/lib/auth";
-import { findPasscodeProfile, getLegacyPasscodeAccess } from "@/lib/passcode-profiles";
+import { findPasscodeProfile, getLegacyPasscodeAccess, hasActivePasscodeProfile } from "@/lib/passcode-profiles";
 import {
   createIdentitySessionCookieValue,
   createSessionCookieValue,
@@ -60,6 +60,19 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
       metadata: { retryAfterSeconds: rateLimit.retryAfterSeconds, identifierPrefix: identifierHash.slice(0, 12) }
     });
     return { error: "เข้าสู่ระบบหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่" };
+  }
+
+  // Sunset gate: environment passcodes work only until the first DB profile
+  // exists. Runs after rate-limit consumption so attempts are still throttled.
+  if (!profile && role && await hasActivePasscodeProfile()) {
+    await recordAuditEvent({
+      action: "auth.login_legacy_passcode_blocked",
+      resourceType: "session",
+      outcome: "failure",
+      actorRole: "system",
+      metadata: { identifierPrefix: identifierHash.slice(0, 12) }
+    });
+    return { error: "รหัสผ่าน Environment ถูกปิดใช้งานแล้ว กรุณาใช้ Passcode ส่วนบุคคลของท่าน" };
   }
 
   if (!role) {
