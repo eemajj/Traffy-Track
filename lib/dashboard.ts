@@ -15,9 +15,17 @@ type LatestImportBatch = {
   unchanged_tickets: number;
 };
 
-type DepartmentSummaryRow = {
+export type DepartmentSummaryRow = {
   dept_name: string;
   pending_count: number;
+  states: {
+    received: number;
+    in_progress: number;
+    investigate: number;
+    budget: number;
+    legal: number;
+    followup: number;
+  };
 };
 
 export type UnassignedTicketRow = {
@@ -79,6 +87,13 @@ export type RecentTicketChange = {
   }>;
 };
 
+export type LatestReportBatch = {
+  id: string;
+  report_date: string;
+  created_at: string;
+  item_count: number;
+};
+
 export type EvidenceReadinessDepartment = {
   dept_name: string;
   status: "ready" | "draft" | "missing";
@@ -100,6 +115,7 @@ export type DashboardData =
       status: "ready";
       scope: DashboardMetricScope;
       latestBatch: LatestImportBatch | null;
+      latestReportBatch: LatestReportBatch | null;
       pendingTicketCount: number;
       unassignedCount: number;
       districtUnassignedCount: number;
@@ -210,19 +226,30 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
     const supabase = createSupabaseAdminClient();
     const pendingFilter = buildPendingStatesOrFilter();
 
-    const latestBatchResult = await supabase
-      .from("import_batches")
-      .select("id, imported_at, filename, total_rows, new_tickets, changed_tickets, unchanged_tickets")
-      .eq("status", "completed")
-      .order("imported_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const [latestBatchResult, latestReportBatchResult] = await Promise.all([
+      supabase
+        .from("import_batches")
+        .select("id, imported_at, filename, total_rows, new_tickets, changed_tickets, unchanged_tickets")
+        .eq("status", "completed")
+        .order("imported_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("report_batches")
+        .select("id, report_date, created_at, item_count")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ]);
 
     if (latestBatchResult.error) {
       throw new Error(`โหลดรอบนำเข้าล่าสุดไม่สำเร็จ: ${latestBatchResult.error.message}`);
     }
 
     const latestBatch = (latestBatchResult.data as LatestImportBatch | null) || null;
+    const latestReportBatch = (!latestReportBatchResult.error && latestReportBatchResult.data)
+      ? (latestReportBatchResult.data as LatestReportBatch)
+      : null;
 
     const [
       pendingCountResult,
@@ -243,8 +270,7 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
         .from("tickets")
         .select("ticket_id, org_response")
         .or(pendingFilter)
-        .or("dept_list.is.null,dept_list.eq.{}")
-        .limit(1000),
+        .or("dept_list.is.null,dept_list.eq.{}"),
       supabase
         .from("tickets")
         .select("dept_list, state")
@@ -297,6 +323,7 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
         .from("tickets")
         .select("timestamp")
         .or(pendingFilter)
+        .order("timestamp", { ascending: true })
         .limit(2000)
     ]);
 
@@ -371,11 +398,11 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
     }
 
     let evidenceReadiness: EvidenceReadinessDepartment[] = [];
-    if (latestBatch) {
+    if (latestReportBatch) {
       const depsResult = await supabase
         .from("report_batch_departments")
         .select("dept_name, evidence_file_url, evidence_review_status, evidence_uploaded_at, evidence_version_number")
-        .eq("report_batch_id", latestBatch.id)
+        .eq("report_batch_id", latestReportBatch.id)
         .order("dept_name", { ascending: true });
 
       if (!depsResult.error && depsResult.data) {
@@ -397,25 +424,53 @@ async function loadDashboardData(scope: DashboardMetricScope = "district"): Prom
     }
 
     const rawDeptRows = (departmentSummaryResult.data as Array<{ dept_list: string[] | null; state: string }> | null) || [];
-    const deptCountMap = new Map<string, number>();
+    type DeptStateMap = Map<string, { total: number; received: number; in_progress: number; investigate: number; budget: number; legal: number; followup: number }>;
+    const deptStateMap: DeptStateMap = new Map();
 
     for (const row of rawDeptRows) {
-      const depts = (row.dept_list || []).filter((d) => d.includes("ทวีวัฒนา"));
+      const depts = (row.dept_list || []).filter((d) => typeof d === "string" && d.includes("ทวีวัฒนา"));
       if (depts.length > 0) {
-        const primaryDept = depts[depts.length - 1];
-        deptCountMap.set(primaryDept, (deptCountMap.get(primaryDept) || 0) + 1);
+        // Unique depts per ticket to match Traffy Fondue filtering
+        const uniqueDepts = Array.from(new Set(depts));
+        for (const dept of uniqueDepts) {
+          if (!deptStateMap.has(dept)) {
+            deptStateMap.set(dept, { total: 0, received: 0, in_progress: 0, investigate: 0, budget: 0, legal: 0, followup: 0 });
+          }
+          const counts = deptStateMap.get(dept)!;
+          counts.total++;
+          if (row.state === "รับเรื่อง") counts.received++;
+          else if (row.state === "กำลังดำเนินการ") counts.in_progress++;
+          else if (row.state === "ศึกษาปัญหา") counts.investigate++;
+          else if (row.state === "ของบประมาณ" || row.state === "จัดซื้อจัดจ้าง") counts.budget++;
+          else if (row.state === "ขั้นตอนทางกฎหมาย") counts.legal++;
+          else if (row.state === "ติดตามเรื่อง") counts.followup++;
+        }
       }
     }
 
-    const calculatedDepartmentSummary: DepartmentSummaryRow[] = Array.from(deptCountMap.entries())
-      .map(([dept_name, pending_count]) => ({ dept_name, pending_count }))
+    const calculatedDepartmentSummary: DepartmentSummaryRow[] = Array.from(deptStateMap.entries())
+      .map(([dept_name, counts]) => ({
+        dept_name,
+        pending_count: counts.total,
+        states: {
+          received: counts.received,
+          in_progress: counts.in_progress,
+          investigate: counts.investigate,
+          budget: counts.budget,
+          legal: counts.legal,
+          followup: counts.followup
+        }
+      }))
       .sort((a, b) => b.pending_count - a.pending_count);
+
+    const totalActionableDistrictPending = calculatedDepartmentSummary.reduce((sum, r) => sum + r.pending_count, 0);
 
     return {
       status: "ready",
       scope,
       latestBatch,
-      pendingTicketCount: pendingCountResult.count || 0,
+      latestReportBatch,
+      pendingTicketCount: totalActionableDistrictPending,
       unassignedCount: allUnassignedRows.length,
       districtUnassignedCount,
       externalAgencyCount,
