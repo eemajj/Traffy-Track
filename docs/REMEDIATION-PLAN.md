@@ -19,6 +19,13 @@
 
 ## 📦 สถานะงาน remediation ที่ทำค้างอยู่ (uncommitted working tree)
 
+> **อัปเดต 2026-08-25:** งานในตารางนี้ถูก commit และ push ครบแล้ว (commits `77a3328`–`992a543`)
+> พร้อม hardening เพิ่มเติม: maintenance fail-open fix, scrypt passcode, cron timing-safe,
+> React 19 upgrade, a11y batch, export size guard และ migration `ticket_origin`
+> (`20260825120000_ticket_origin_flag.sql` — **ต้อง apply ผ่าน Staging ก่อน Production**;
+> dashboard split หมวด "ส่งต่อออก vs รับเข้าเอง" จะทำต่อหลัง flag มีข้อมูลจริง)
+
+
 ตรวจแล้วว่าเป็นงานตั้งใจตามแผน ไม่ใช่ artifact:
 
 | งาน | ไฟล์ | สถานะ |
