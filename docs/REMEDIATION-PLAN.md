@@ -12,7 +12,7 @@
 |---|---|---|---|
 | D1 | Metric scope บน Dashboard | **ลบ dead code ถาวร ยึด district ล้วน** — หากอนาคตต้องการ toggle ให้ออกแบบใหม่แบบ partition (district + external = all พอดี) | ✅ ยืนยัน |
 | D2 | Import rule 4 (เคสหน่วยภายนอกสถานะต้นน้ำ) | **เก็บเข้าฐานทุกเคส + เพิ่ม flag แหล่งที่มา** (`external-intake` vs `district-transferred`) แล้ว Dashboard แสดงแยกหมวดชัดเจน — ต้องมี migration | ✅ ยืนยัน |
-| D3 | นิยาม "ฝ่ายหลัก" (Cases ใช้ `dept_list[0]` / Dashboard นับทุกฝ่าย) | ⏳ ต้องตัดสินใจก่อนเริ่ม Stage 3 — ข้อเสนอ: ใช้ "ฝ่ายทวีวัฒนาตัวสุดท้าย" = ผู้รับผิดชอบปัจจุบัน สอดคล้อง semantic อื่นของระบบ | ⏳ รอยืนยัน |
+| D3 | นิยาม "ฝ่ายหลัก" (Cases ใช้ `dept_list[0]` / Dashboard นับทุกฝ่าย) | ✅ **ยืนยันแล้ว (2026-08-25): ใช้ "ฝ่ายทวีวัฒนาตัวสุดท้าย" = ผู้รับผิดชอบปัจจุบัน** — implement แล้วที่ `lib/tickets.ts getPrimaryDepartment()` + wire เข้า cases filter | ✅ ดำเนินการแล้ว |
 | D4 | คำศัพท์ Glossary ("ตีกลับ", "อนุมัติแล้ว") | ⏳ ต้องมีผู้เลือกคำฝั่งธุรกิจ — ดู `docs/GLOSSARY.md` (ร่างแรกมีแล้ว) | ⏳ รอยืนยัน |
 
 ---

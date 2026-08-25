@@ -224,6 +224,13 @@ function DepartmentMatrixSection({
             )}
           </tbody>
         </table>
+        <p className="mt-3 border-t border-border pt-3 text-xs leading-5 text-muted">
+          หมายเหตุ: ผลรวมรายฝ่ายอาจไม่เท่ากับยอดคงค้างรวมบนการ์ดสรุป เพราะหนึ่งเรื่องอาจมีมากกว่าหนึ่งฝ่ายร่วมรับผิดชอบ
+          ดูวิธีคำนวณฉบับเต็มได้ที่{" "}
+          <Link href="/docs/dashboard-calculation" className="font-semibold text-brand hover:text-brand-deep">
+            เอกสารการคำนวณ Dashboard
+          </Link>
+        </p>
       </div>
     </section>
   );
