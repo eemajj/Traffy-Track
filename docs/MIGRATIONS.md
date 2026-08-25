@@ -43,6 +43,6 @@
 | 20260719120000_import_staged_pipeline_v2.sql | ✅ (ก่อนมี tracking) | ✅ (ก่อนมี tracking) |
 | 20260720144500_fix_report_snapshot_helper_grant.sql | ✅ (ก่อนมี tracking) | ✅ (ก่อนมี tracking) |
 | 20260805134000_dept_list_gin_index.sql | ✅ (ก่อนมี tracking) | ✅ (ก่อนมี tracking) |
-| 20260825120000_ticket_origin_flag.sql | ⏳ รอ apply | ⏳ หลัง Staging ผ่าน |
+| 20260825120000_ticket_origin_flag.sql | ⏳ รอยืนยัน Staging | ✅ **applied + verified** (2026-08-25, `scripts/verify-latest-migrations.mjs`) |
 | 20260825130000_audit_log_retention.sql | ⏳ รอ apply | ⏳ หลัง Staging ผ่าน |
 | 20260825140000_dashboard_range_overview_rpc.sql | ⏳ รอ apply | ⏳ หลัง Staging ผ่าน |
