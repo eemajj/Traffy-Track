@@ -211,6 +211,25 @@ function drawSummaryPage(doc: PDFKit.PDFDocument, data: SummaryReportData) {
     x += widths[index];
   });
 
+  // Render SLA Aging Matrix table on bottom left
+  const slaY = y + 36;
+  const slaWidths = [120, 65];
+  const slaTableWidth = slaWidths[0] + slaWidths[1];
+  cell(doc, "การติดตามอายุเรื่องคงค้างตามเกณฑ์ SLA", x0, slaY, slaTableWidth, 20, { bold: true, size: 8 });
+
+  const slaRows = [
+    { label: "ปกติ (0 - 7 วัน)", count: data.agingMatrix.normal },
+    { label: "เริ่มชะลอ (8 - 14 วัน)", count: data.agingMatrix.warning },
+    { label: "เกิน SLA (15 - 30 วัน)", count: data.agingMatrix.overdue },
+    { label: "ค้างวิกฤต (> 30 วัน)", count: data.agingMatrix.critical }
+  ];
+  let curSlaY = slaY + 20;
+  for (const row of slaRows) {
+    cell(doc, row.label, x0, curSlaY, slaWidths[0], 16, { size: 7.5, align: "left", paddingX: 6 });
+    cell(doc, number(row.count), x0 + slaWidths[0], curSlaY, slaWidths[1], 16, { size: 7.5 });
+    curSlaY += 16;
+  }
+
   text(doc, "หมายเหตุ :", x0 + tableWidth * 0.5, y + 43, tableWidth * 0.5, 18, { bold: true, size: 9 });
   text(
     doc,
