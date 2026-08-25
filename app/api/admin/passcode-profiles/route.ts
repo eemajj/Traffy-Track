@@ -5,7 +5,7 @@ import { getCurrentSessionClaims } from "@/lib/auth";
 import { requireApiPermission } from "@/lib/api-auth";
 import { recordAuditEvent } from "@/lib/audit";
 import {
-  digestPasscode,
+  hashPasscode,
   listPasscodeProfiles,
   validatePasscode
 } from "@/lib/passcode-profiles";
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         display_name: input.displayName,
         position: input.position,
         role_label: input.roleLabel,
-        passcode_digest: digestPasscode(input.passcode),
+        passcode_digest: await hashPasscode(input.passcode),
         permissions: input.permissions,
         is_admin: input.isAdmin,
         is_active: input.isActive
@@ -165,7 +165,7 @@ export async function PUT(request: NextRequest) {
       ,expires_at: input.expiresAt
       ,must_rotate: input.mustRotate
     };
-    if (input.passcode) update.passcode_digest = digestPasscode(input.passcode);
+    if (input.passcode) update.passcode_digest = await hashPasscode(input.passcode);
     const result = await supabase.from("passcode_profiles").update(update).eq("id", id).select("id").single();
     if (result.error) throw new Error(databaseError(result.error, "แก้ไข Passcode ไม่สำเร็จ"));
 

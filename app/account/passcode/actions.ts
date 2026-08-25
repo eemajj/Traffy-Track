@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { recordAuditEvent } from "@/lib/audit";
 import { getCurrentSessionClaims } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { digestPasscode, validatePasscode } from "@/lib/passcode-profiles";
+import { hashPasscode, validatePasscode } from "@/lib/passcode-profiles";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
 export type ChangePasscodeState = { error?: string };
@@ -19,7 +19,7 @@ export async function changeOwnPasscodeAction(_: ChangePasscodeState, formData: 
   try {
     validatePasscode(passcode);
     if (passcode !== confirmation) return { error: "Passcode ทั้งสองช่องไม่ตรงกัน" };
-    const result = await createSupabaseAdminClient().from("passcode_profiles").update({ passcode_digest: digestPasscode(passcode), must_rotate: false }).eq("id", claims.identityId).select("id").single();
+    const result = await createSupabaseAdminClient().from("passcode_profiles").update({ passcode_digest: await hashPasscode(passcode), must_rotate: false }).eq("id", claims.identityId).select("id").single();
     if (result.error) throw new Error(result.error.message);
     await recordAuditEvent({ action: "access.passcode_rotated", resourceType: "passcode_profile", resourceId: claims.identityId, actorRole: claims.role, metadata: { selfService: true } });
   } catch (error) {

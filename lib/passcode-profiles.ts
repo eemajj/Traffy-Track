@@ -1,8 +1,15 @@
-import { createHmac } from "node:crypto";
+import {
+  digestLegacyPasscode,
+  hashPasscode,
+  isLegacyPasscodeDigest,
+  verifyPasscodeDigest as verifyPasscodeDigestWithPepper
+} from "@/lib/passcode-hash";
 
 import { APP_PERMISSIONS, normalizePermissions, type AppPermission } from "@/lib/access-permissions";
 import { env, hasSupabaseAdminEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+
+export { hashPasscode, isLegacyPasscodeDigest };
 
 export type PasscodeProfile = {
   id: string;
@@ -58,6 +65,8 @@ const PROFILE_COLUMNS = [
   "updated_at"
 ].join(",");
 
+const LOGIN_LOOKUP_COLUMNS = [...PROFILE_COLUMNS.split(","), "passcode_digest"].join(",");
+
 function getPasscodePepper() {
   const pepper = env.appPasscodePepper || process.env.APP_SESSION_SECRET;
   if (!pepper || new TextEncoder().encode(pepper).byteLength < 32) {
@@ -67,9 +76,14 @@ function getPasscodePepper() {
 }
 
 export function digestPasscode(passcode: string) {
-  return createHmac("sha256", getPasscodePepper())
-    .update(`citydata-passcode-v1:${passcode}`, "utf8")
-    .digest("hex");
+  return digestLegacyPasscode(passcode, getPasscodePepper());
+}
+
+/** Legacy v1 HMAC digest — kept only for verification of rows not yet upgraded. */
+export const legacyDigestPasscode = digestPasscode;
+
+export function verifyPasscode(passcode: string, storedDigest: string) {
+  return verifyPasscodeDigestWithPepper(passcode, storedDigest, getPasscodePepper());
 }
 
 function mapProfile(row: PasscodeProfileRow): PasscodeProfile {
@@ -105,28 +119,43 @@ export async function findPasscodeProfile(passcode: string): Promise<PasscodePro
   if (!hasSupabaseAdminEnv() || passcode.length === 0) return null;
 
   const supabase = createSupabaseAdminClient();
+  // Scrypt digests are salted, so equality lookup is impossible. Active profiles
+  // are few (district-office scale), so verify each candidate instead.
   const result = await supabase
     .from("passcode_profiles")
-    .select(PROFILE_COLUMNS)
-    .eq("passcode_digest", digestPasscode(passcode))
-    .eq("is_active", true)
-    .maybeSingle();
+    .select(LOGIN_LOOKUP_COLUMNS)
+    .eq("is_active", true);
 
   if (result.error) {
     // Allows a safe rollout before the migration reaches every environment.
     if (result.error.code === "42P01" || /passcode_profiles/i.test(result.error.message)) return null;
     throw new Error(`ตรวจสอบ Passcode ไม่สำเร็จ: ${result.error.message}`);
   }
-  if (!result.data) return null;
-  const row = result.data as unknown as PasscodeProfileRow;
-  if (row.expires_at && Date.parse(row.expires_at) <= Date.now()) return null;
+
+  const rows = (result.data || []) as unknown as Array<PasscodeProfileRow & { passcode_digest: string }>;
+  let matched: (typeof rows)[number] | null = null;
+  for (const row of rows) {
+    if (!row.passcode_digest) continue;
+    if (await verifyPasscode(passcode, row.passcode_digest)) {
+      matched = row;
+      break;
+    }
+  }
+  if (!matched) return null;
+  if (matched.expires_at && Date.parse(matched.expires_at) <= Date.now()) return null;
+
+  const digestPatch: Record<string, unknown> = {};
+  if (isLegacyPasscodeDigest(matched.passcode_digest)) {
+    // Transparent upgrade from the legacy fast HMAC digest to memory-hard scrypt.
+    digestPatch.passcode_digest = await hashPasscode(passcode);
+  }
 
   await supabase
     .from("passcode_profiles")
-    .update({ last_used_at: new Date().toISOString(), login_count: row.login_count + 1 })
-    .eq("id", row.id);
+    .update({ last_used_at: new Date().toISOString(), login_count: matched.login_count + 1, ...digestPatch })
+    .eq("id", matched.id);
 
-  return mapProfile(row);
+  return mapProfile(matched);
 }
 
 export async function listPasscodeProfiles(): Promise<PasscodeProfile[]> {
