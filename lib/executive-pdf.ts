@@ -4,13 +4,14 @@ import path from "node:path";
 import PDFDocument from "pdfkit/js/pdfkit.standalone";
 
 import type { AnalyticsReadyData } from "@/lib/analytics";
+import { formatBangkokDateTime } from "./date-utils.ts";
 import type { SystemStatus } from "@/lib/system-status";
 
 const FONT = path.join(process.cwd(), "public", "fonts", "tahoma.ttf");
 const FONT_BOLD = path.join(process.cwd(), "public", "fonts", "tahomabd.ttf");
 
 function number(value: number) { return new Intl.NumberFormat("th-TH", { maximumFractionDigits: 1 }).format(value); }
-function dateTime(value: string | null) { return value ? new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "ไม่ระบุ"; }
+function dateTime(value: string | null) { return value ? formatBangkokDateTime(value) : "ไม่ระบุ"; }
 function change(value: number | null) { return value === null ? "ไม่มีฐานเปรียบเทียบ" : `${value > 0 ? "+" : ""}${number(value)}%`; }
 
 export async function buildExecutiveSummaryPdf(data: AnalyticsReadyData, status: SystemStatus) {

@@ -1,3 +1,5 @@
+import { formatBangkokDate, formatBangkokDateTime } from "../date-utils.ts";
+
 export const analyticsAgeBucketMeta = {
   "0_7": { label: "ไม่เกิน 7 วัน", shortLabel: "≤ 7 วัน", color: "bg-success", text: "text-success" },
   "8_30": { label: "8–30 วัน", shortLabel: "8–30 วัน", color: "bg-brand", text: "text-brand" },
@@ -8,8 +10,8 @@ export const analyticsAgeBucketMeta = {
 export function formatAnalyticsNumber(value: number) { return new Intl.NumberFormat("th-TH").format(value); }
 export function formatAnalyticsDecimal(value: number) { return new Intl.NumberFormat("th-TH", { maximumFractionDigits: 1 }).format(value); }
 export function formatAnalyticsCoordinate(value: number) { return new Intl.NumberFormat("th-TH", { minimumFractionDigits: 5, maximumFractionDigits: 5, useGrouping: false }).format(value); }
-export function formatAnalyticsDate(value: string) { return new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00+07:00`)); }
-export function formatAnalyticsDateTime(value: string) { return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+export function formatAnalyticsDate(value: string) { return formatBangkokDate(`${value}T00:00:00+07:00`, { day: "numeric", month: "short" }); }
+export function formatAnalyticsDateTime(value: string) { return formatBangkokDateTime(value); }
 export function formatAnalyticsDuration(hours: number | null) {
   if (hours === null) return "ยังไม่มีข้อมูล";
   return hours < 24 ? `${formatAnalyticsDecimal(hours)} ชม.` : `${formatAnalyticsDecimal(hours / 24)} วัน`;

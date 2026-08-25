@@ -1,7 +1,9 @@
+import { formatBangkokDateTime } from "../date-utils.ts";
+
 export const ESTIMATED_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
 export function formatAdminDateTime(value: string | null) {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return formatBangkokDateTime(value);
 }
 export function formatAdminNumber(value: number) { return new Intl.NumberFormat("th-TH").format(value); }
 export function formatAdminBytes(bytes: number) {

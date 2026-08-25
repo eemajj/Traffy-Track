@@ -1,8 +1,9 @@
+import { formatBangkokDateTime } from "@/lib/date-utils";
 import type { SystemStatus } from "@/lib/system-status";
 
 function formatDateTime(value: string | null) {
   if (!value) return "ยังไม่มีข้อมูลการนำเข้า";
-  return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return formatBangkokDateTime(value);
 }
 
 export function DataFreshnessBanner({ status, showAlerts }: { status: SystemStatus; showAlerts: boolean }) {
