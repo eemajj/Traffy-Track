@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getBangkokRangeBounds,
   normalizeDashboardDateRange,
+  summarizeDashboardOverview,
   summarizeDashboardTickets,
   validateDashboardDateRange
 } from "../lib/dashboard/statistics.ts";
@@ -135,5 +136,34 @@ test("external split falls back to legacy mode before the origin migration is ap
   assert.equal(summary.externalSplit.originDataAvailable, false);
   assert.equal(summary.externalSplit.transferredOut, 1);
   assert.equal(summary.externalSplit.externalIntake, 0);
+});
+
+test("RPC-based summary builds an identical ready shape from pre-aggregated counts", () => {
+  const summary = summarizeDashboardOverview(
+    {
+      total: 5,
+      status_counts: {
+        "รอรับเรื่อง": 1,
+        "กำลังดำเนินการ": 2,
+        "เสร็จสิ้น": 1,
+        "ส่งต่อ(ใหม่)": 1
+      },
+      problem_type_counts: { "ถนน": 4, "": 1 },
+      feedback_count: 1,
+      feedback_total: 5,
+      finished_low_rating: 0,
+      external_intake_count: 1,
+      origin_data_available: true
+    },
+    { from: "2026-07-01", to: "2026-07-31" }
+  );
+
+  assert.equal(summary.status, "ready");
+  assert.equal(summary.total, 5);
+  assert.equal(summary.rollup.forward, 1);
+  assert.equal(summary.externalSplit.transferredOut, 1);
+  assert.equal(summary.externalSplit.externalIntake, 1);
+  assert.equal(summary.feedback.average, 5);
+  assert.equal(summary.problemTypes[0].name, "ถนน");
 });
 

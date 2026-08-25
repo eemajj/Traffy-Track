@@ -297,3 +297,106 @@ export function summarizeDashboardTickets(
     externalSplit
   };
 }
+
+export type DashboardRangeOverviewJson = {
+  total: number;
+  status_counts: Record<string, number>;
+  problem_type_counts: Record<string, number>;
+  feedback_count: number;
+  feedback_total: number;
+  finished_low_rating: number;
+  external_intake_count: number;
+  origin_data_available: boolean;
+};
+
+/**
+ * Builds the same DashboardStatisticsReady shape as summarizeDashboardTickets,
+ * but from pre-aggregated counts returned by the dashboard_range_overview RPC
+ * so the app never loads raw ticket rows just to count them.
+ */
+export function summarizeDashboardOverview(
+  overview: DashboardRangeOverviewJson,
+  range: DashboardDateRange,
+  generatedAt = new Date().toISOString()
+): DashboardStatisticsReady {
+  const statusCounts = new Map<TraffyStatusName, number>(TRAFFY_STATUS_ORDER.map((name) => [name, 0]));
+  let unknownStateCount = 0;
+  const knownStates = new Set<string>(TRAFFY_STATUS_ORDER);
+
+  for (const [state, value] of Object.entries(overview.status_counts || {})) {
+    const countValue = Number(value) || 0;
+    if (knownStates.has(state)) {
+      statusCounts.set(state as TraffyStatusName, countValue);
+    } else {
+      unknownStateCount += countValue;
+    }
+  }
+
+  const total = Number(overview.total) || 0;
+  const count = (name: TraffyStatusName) => statusCounts.get(name) || 0;
+  const start = count("รอรับเรื่อง");
+  const inProgress = count("รับเรื่อง")
+    + count("กำลังดำเนินการ")
+    + count("ศึกษาปัญหา")
+    + count("จัดทำนโยบาย")
+    + count("ของบประมาณ")
+    + count("จัดซื้อจัดจ้าง")
+    + count("ขั้นตอนทางกฎหมาย");
+  const finish = count("เสร็จสิ้น");
+  const forward = count("ส่งต่อ(ใหม่)");
+  const irrelevantRaw = count("ไม่เกี่ยวข้อง");
+  const follow = count("ติดตามเรื่อง");
+  const originDataAvailable = overview.origin_data_available === true;
+
+  return {
+    status: "ready",
+    range,
+    generatedAt,
+    total,
+    managed: Math.max(0, total - start),
+    unknownStateCount,
+    statusRows: TRAFFY_STATUS_ORDER.map((name) => ({
+      name,
+      count: count(name),
+      percent: percentage(count(name), total)
+    })),
+    rollup: {
+      start,
+      inProgress,
+      finish,
+      forward,
+      irrelevantRaw,
+      follow,
+      irrelevantAggregate: irrelevantRaw + follow
+    },
+    finishedLowRating: {
+      count: Number(overview.finished_low_rating) || 0,
+      percentOfFinished: percentage(Number(overview.finished_low_rating) || 0, finish),
+      method: "finished_with_star_1_or_2"
+    },
+    feedback: {
+      count: Number(overview.feedback_count) || 0,
+      average:
+        (Number(overview.feedback_count) || 0) > 0
+          ? Number(((Number(overview.feedback_total) || 0) / Number(overview.feedback_count)).toFixed(2))
+          : null
+    },
+    byThis: {
+      availability: "unavailable",
+      reason: "ไฟล์ CityData ไม่มีผู้ดำเนินการที่ปิดเรื่อง จึงไม่คาดเดาจากชื่อหน่วยงานล่าสุด"
+    },
+    resolutionTime: {
+      availability: "unavailable",
+      reason: "ไฟล์ CityData ไม่มีเวลาที่เปลี่ยนเป็นสถานะเสร็จสิ้น จึงยังคำนวณช่วงเวลาแบบ Traffy ไม่ได้"
+    },
+    problemTypes: Object.entries(overview.problem_type_counts || {})
+      .map(([name, value]) => ({ name, count: Number(value) || 0, percent: percentage(Number(value) || 0, total) }))
+      .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, "th"))
+      .slice(0, 10),
+    externalSplit: {
+      transferredOut: forward,
+      externalIntake: originDataAvailable ? Number(overview.external_intake_count) || 0 : 0,
+      originDataAvailable
+    }
+  };
+}
