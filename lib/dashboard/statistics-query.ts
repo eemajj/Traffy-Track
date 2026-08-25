@@ -17,6 +17,13 @@ import { createSupabaseAdminClient } from "@/lib/supabase";
 
 const PAGE_SIZE = 1000;
 
+// Tri-state capability cache: null = unknown, false = migration not applied yet.
+let ticketOriginColumnAvailable: boolean | null = null;
+
+function isMissingTicketOriginColumn(message: string) {
+  return message.includes("ticket_origin");
+}
+
 async function loadDashboardStatistics(
   range: DashboardDateRange,
   scope: DashboardMetricScope = "district",
@@ -32,16 +39,30 @@ async function loadDashboardStatistics(
     const tickets: DashboardStatisticsTicket[] = [];
 
     for (let from = 0; ; from += PAGE_SIZE) {
-      const result = await supabase
+      const selectColumns = ticketOriginColumnAvailable === false
+        ? "ticket_id, type, timestamp, last_activity, state, star, org_response, dept_list"
+        : "ticket_id, type, timestamp, last_activity, state, star, org_response, dept_list, ticket_origin";
+
+      let result = await supabase
         .from("tickets")
-        .select("ticket_id, type, timestamp, last_activity, state, star, org_response, dept_list")
+        .select(selectColumns)
         .gte("timestamp", startAt)
         .lt("timestamp", endAt)
         .order("ticket_id", { ascending: true })
         .range(from, from + PAGE_SIZE - 1);
 
+      // Graceful degradation before migration 20260825120000 lands.
+      if (result.error && ticketOriginColumnAvailable !== false && isMissingTicketOriginColumn(result.error.message)) {
+        ticketOriginColumnAvailable = false;
+        continue;
+      }
+
       if (result.error) throw new Error(`โหลดสถิติ Dashboard ไม่สำเร็จ: ${result.error.message}`);
-      const page = (result.data || []) as Array<
+      // The page succeeded with ticket_origin selected, so the column exists.
+      if (ticketOriginColumnAvailable === null) {
+        ticketOriginColumnAvailable = true;
+      }
+      const page = (result.data || []) as unknown as Array<
         DashboardStatisticsTicket & { org_response: string | null; dept_list: string[] | null }
       >;
 
@@ -54,8 +75,11 @@ async function loadDashboardStatistics(
         : scope === "external"
         ? page.filter((t) => {
             const hasDept = t.dept_list && t.dept_list.length > 0;
+            if (hasDept) return false;
             const { isExternal } = isExternalAgencyOrgResponse(t.org_response);
-            return !hasDept && (isExternal || t.state === "ส่งต่อ(ใหม่)");
+            return isExternal
+              || t.state === "ส่งต่อ(ใหม่)"
+              || t.ticket_origin === "external_intake";
           })
         : page;
 

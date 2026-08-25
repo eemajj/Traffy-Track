@@ -9,7 +9,7 @@ import {
 } from "../lib/dashboard/statistics.ts";
 
 function ticket(id, state, options = {}) {
-  return {
+  const base = {
     ticket_id: id,
     type: options.type ?? "ถนน",
     timestamp: options.timestamp ?? "2026-07-01T00:00:00+07:00",
@@ -17,6 +17,8 @@ function ticket(id, state, options = {}) {
     state,
     star: options.star ?? null
   };
+  if (options.ticket_origin !== undefined) base.ticket_origin = options.ticket_origin;
+  return base;
 }
 
 test("dashboard date range validates real calendar dates and Bangkok half-open bounds", () => {
@@ -107,5 +109,31 @@ test("isDistrictRelatedTicket filters out pure external tickets while preserving
 
   // New intake ticket geofenced to district (unassigned yet) -> Safely Preserved
   assert.equal(isDistrictRelatedTicket({ org_list: [], dept_list: [], district: "เขตทวีวัฒนา", state: "รอรับเรื่อง" }), true);
+});
+
+test("external split separates forwarded-out from external-intake once origin data exists", () => {
+  const summary = summarizeDashboardTickets(
+    [
+      ticket("T1", "ส่งต่อ(ใหม่)", { ticket_origin: "district_transferred" }),
+      ticket("T2", "รับเรื่อง", { ticket_origin: "external_intake" }),
+      ticket("T3", "เสร็จสิ้น", { star: 5, ticket_origin: "external_intake" })
+    ],
+    { from: "2026-07-01", to: "2026-07-31" }
+  );
+
+  assert.equal(summary.externalSplit.originDataAvailable, true);
+  assert.equal(summary.externalSplit.transferredOut, 1);
+  assert.equal(summary.externalSplit.externalIntake, 2);
+});
+
+test("external split falls back to legacy mode before the origin migration is applied", () => {
+  const summary = summarizeDashboardTickets(
+    [ticket("T1", "ส่งต่อ(ใหม่)"), ticket("T2", "กำลังดำเนินการ")],
+    { from: "2026-07-01", to: "2026-07-31" }
+  );
+
+  assert.equal(summary.externalSplit.originDataAvailable, false);
+  assert.equal(summary.externalSplit.transferredOut, 1);
+  assert.equal(summary.externalSplit.externalIntake, 0);
 });
 

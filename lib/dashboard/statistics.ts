@@ -70,6 +70,17 @@ export type DashboardStatisticsTicket = {
   last_activity: string | null;
   state: string | null;
   star: number | null;
+  /** Present only after migration 20260825120000_ticket_origin_flag.sql is applied. */
+  ticket_origin?: string | null;
+};
+
+export type DashboardExternalSplit = {
+  /** Cases forwarded out of the district (state = ส่งต่อ(ใหม่)). */
+  transferredOut: number;
+  /** Cases that only entered via upstream intake (ticket_origin = external_intake). */
+  externalIntake: number;
+  /** False while the ticket_origin column has not been applied yet. */
+  originDataAvailable: boolean;
 };
 
 export type DashboardDateRange = {
@@ -120,6 +131,7 @@ export type DashboardStatisticsReady = {
     count: number;
     percent: number;
   }>;
+  externalSplit: DashboardExternalSplit;
 };
 
 export type DashboardStatisticsData =
@@ -227,6 +239,19 @@ export function summarizeDashboardTickets(
   const irrelevantRaw = count("ไม่เกี่ยวข้อง");
   const follow = count("ติดตามเรื่อง");
 
+  // Decision D2: split external work into "forwarded out by the district"
+  // versus "intaken by external agencies themselves" once origin data exists.
+  const originDataAvailable = tickets.some(
+    (ticket) => ticket.ticket_origin !== undefined && ticket.ticket_origin !== null
+  );
+  const externalSplit: DashboardExternalSplit = {
+    transferredOut: forward,
+    externalIntake: originDataAvailable
+      ? tickets.filter((ticket) => ticket.ticket_origin === "external_intake").length
+      : 0,
+    originDataAvailable
+  };
+
   return {
     status: "ready",
     range,
@@ -268,6 +293,7 @@ export function summarizeDashboardTickets(
     problemTypes: [...problemTypeCounts.entries()]
       .map(([name, value]) => ({ name, count: value, percent: percentage(value, total) }))
       .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, "th"))
-      .slice(0, 10)
+      .slice(0, 10),
+    externalSplit
   };
 }

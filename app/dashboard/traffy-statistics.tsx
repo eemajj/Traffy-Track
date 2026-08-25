@@ -91,6 +91,12 @@ function ExecutiveKpiCards({
           {formatNumber(pendingCount)} <span className="text-base font-normal text-amber-800">เรื่อง</span>
         </p>
         <p className="mt-1 text-xs font-semibold text-amber-800">หักเรื่องส่งต่อภายนอกออกแล้ว (เรื่องค้างของเขตแท้จริง)</p>
+        {stats.externalSplit.originDataAvailable ? (
+          <p className="mt-1 text-[11px] leading-4 text-muted">
+            หมวดภายนอกช่วงนี้: ที่เขตส่งต่อออก {formatNumber(stats.externalSplit.transferredOut)} เรื่อง ·
+            ที่หน่วยภายนอกรับเข้าเอง {formatNumber(stats.externalSplit.externalIntake)} เรื่อง
+          </p>
+        ) : null}
       </div>
 
       {/* Card 4: Reopened Rate */}
