@@ -147,3 +147,7 @@ export default async function MapPage(props: MapPageProps) {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "แผนที่เรื่องร้องเรียน — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};

@@ -166,3 +166,7 @@ export default async function ReportPage(props: ReportPageProps) {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "รอบรายงาน — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};

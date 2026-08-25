@@ -29,3 +29,7 @@ export default async function AnalyticsPage(props: AnalyticsPageProps) {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "แนวโน้มและการวิเคราะห์ — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};

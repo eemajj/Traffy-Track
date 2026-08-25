@@ -44,3 +44,7 @@ export default async function DashboardPage(props: DashboardPageProps) {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "ภาพรวมระบบ — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};

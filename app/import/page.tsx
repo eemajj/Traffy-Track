@@ -19,3 +19,7 @@ export default async function ImportPage() {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "นำเข้าข้อมูล — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};
