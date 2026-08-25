@@ -9,7 +9,15 @@ const authCookieName = process.env.APP_AUTH_COOKIE || "citydata-passcode";
 const protectedPrefixes = ["/import", "/dashboard", "/analytics", "/cases", "/map", "/report", "/admin", "/account"];
 const maintenanceWriteExemptions = ["/api/admin/maintenance", "/api/admin/backup/export", "/api/cron/"];
 
+const MAINTENANCE_FLAG_TTL_MS = 60_000;
+// Module-level cache so a transient Supabase outage does not silently reopen writes
+// while an administrator believes maintenance mode is still active.
+let maintenanceFlagCache: { value: boolean; fetchedAt: number } | null = null;
+
 async function isMaintenanceEnabled() {
+  if (maintenanceFlagCache && Date.now() - maintenanceFlagCache.fetchedAt < MAINTENANCE_FLAG_TTL_MS) {
+    return maintenanceFlagCache.value;
+  }
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceRoleKey) return false;
@@ -22,10 +30,23 @@ async function isMaintenanceEnabled() {
       headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
       cache: "no-store"
     });
-    if (!response.ok) return false;
+    if (!response.ok) throw new Error(`system_settings responded ${response.status}`);
     const rows = await response.json() as Array<{ maintenance_enabled?: boolean }>;
-    return rows[0]?.maintenance_enabled === true;
-  } catch {
+    const value = rows[0]?.maintenance_enabled === true;
+    maintenanceFlagCache = { value, fetchedAt: Date.now() };
+    return value;
+  } catch (error) {
+    // Stale-while-error: keep enforcing the last known flag instead of failing open.
+    if (maintenanceFlagCache) {
+      console.error("maintenance_flag_check_failed_using_stale_value", {
+        staleAgeMs: Date.now() - maintenanceFlagCache.fetchedAt,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return maintenanceFlagCache.value;
+    }
+    console.error("maintenance_flag_check_failed_no_cache", {
+      message: error instanceof Error ? error.message : String(error)
+    });
     return false;
   }
 }
