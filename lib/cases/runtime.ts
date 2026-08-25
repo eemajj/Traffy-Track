@@ -10,7 +10,7 @@ import { hasSupabaseAdminEnv } from "@/lib/env";
 import { getSafeHttpsUrl } from "@/lib/safe-url";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { getCachedTicketFilterOptions } from "@/lib/ticket-filter-options";
-import { CLOSED_TICKET_STATES, buildPendingStatesOrFilter, isClosedTicketState } from "@/lib/tickets";
+import { CLOSED_TICKET_STATES, buildPendingStatesOrFilter, getPrimaryDepartment, isClosedTicketState } from "@/lib/tickets";
 
 const DEFAULT_CASES_PAGE_SIZE = 50;
 const ALLOWED_CASES_PAGE_SIZES = [10, 50, 100] as const;
@@ -196,7 +196,8 @@ function doesTicketMatchListFilters(ticket: CaseListItem, filters: { q: string; 
 
   if (filters.role === "primary") {
     if (filters.dept) {
-      if (ticket.dept_list[0] !== filters.dept) return false;
+      // D3: primary department = last Thawi Watthana department in the list.
+      if (getPrimaryDepartment(ticket.dept_list) !== filters.dept) return false;
     } else if (ticket.dept_list.length !== 1) {
       return false;
     }

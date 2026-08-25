@@ -14,11 +14,13 @@ export function buildPendingStatesOrFilter(prefix = "") {
 }
 
 /**
- * Resolves the primary department from a ticket's dept_list.
- * Returns the first district department in the list, or the first department if none match, or null if empty.
+ * Resolves the primary department from a ticket's dept_list (Decision D3:
+ * "last Thawi Watthana department" = current responsible unit).
+ * Returns the last district department in the list, or the last department if
+ * none match, or null if empty.
  */
 export function getPrimaryDepartment(deptList: string[] | null | undefined): string | null {
   if (!deptList || !Array.isArray(deptList) || deptList.length === 0) return null;
   const districtDepts = deptList.filter((d) => typeof d === "string" && d.includes("ทวีวัฒนา"));
-  return districtDepts[0] || deptList[0] || null;
+  return districtDepts[districtDepts.length - 1] || deptList[deptList.length - 1] || null;
 }
