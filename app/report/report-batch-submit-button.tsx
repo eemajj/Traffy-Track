@@ -21,11 +21,15 @@ export function ReportBatchSubmitButton({
   const { pending } = useFormStatus();
   const isDanger = variant === "danger";
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [wasPending, setWasPending] = useState(pending);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  // Consume the confirmation as soon as the form starts submitting.
+  // Adjusting state during render (not in an effect) avoids cascading renders.
+  if (pending !== wasPending) {
+    setWasPending(pending);
     if (pending) setAwaitingConfirmation(false);
-  }, [pending]);
+  }
 
   useEffect(() => {
     return () => {
