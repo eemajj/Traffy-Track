@@ -24,8 +24,9 @@ type LoginState = {
 
 async function getLoginIdentifierHash(secret: string) {
   const requestHeaders = await headers();
-  const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
-  const address = forwardedFor || requestHeaders.get("x-real-ip") || "unknown";
+  const realIp = requestHeaders.get("x-real-ip")?.trim();
+  const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean);
+  const address = realIp || (forwardedFor && forwardedFor[0]) || "unknown";
   return createHmac("sha256", secret).update(address).digest("hex");
 }
 
@@ -101,11 +102,15 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
     ? getFirstAllowedPath(accessClaims)
     : requestedNextPath;
 
+  const requestHeaders = await headers();
+  const forwardedProto = requestHeaders.get("x-forwarded-proto");
+  const isHttps = forwardedProto === "https";
+
   const cookieStore = await cookies();
   cookieStore.set(env.authCookieName, sessionCookieValue, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttps,
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS
   });
@@ -126,11 +131,15 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
 }
 
 export async function logoutAction() {
+  const requestHeaders = await headers();
+  const forwardedProto = requestHeaders.get("x-forwarded-proto");
+  const isHttps = forwardedProto === "https";
+
   const cookieStore = await cookies();
   cookieStore.set(env.authCookieName, "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttps,
     path: "/",
     maxAge: 0
   });

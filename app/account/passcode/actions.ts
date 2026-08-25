@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { recordAuditEvent } from "@/lib/audit";
@@ -25,7 +25,11 @@ export async function changeOwnPasscodeAction(_: ChangePasscodeState, formData: 
   } catch (error) {
     return { error: error instanceof Error ? error.message : "เปลี่ยน Passcode ไม่สำเร็จ" };
   }
+  const requestHeaders = await headers();
+  const forwardedProto = requestHeaders.get("x-forwarded-proto");
+  const isHttps = forwardedProto === "https";
+
   const cookieStore = await cookies();
-  cookieStore.set(env.authCookieName, "", { path: "/", maxAge: 0, httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+  cookieStore.set(env.authCookieName, "", { path: "/", maxAge: 0, httpOnly: true, sameSite: "lax", secure: isHttps });
   redirect("/login?passcode=changed");
 }
