@@ -42,39 +42,43 @@ export async function GET(_request: Request, props: { params: Promise<{ batchId:
       return NextResponse.json({ error: "ไม่พบฝ่ายในรอบรายงานนี้" }, { status: 404 });
     }
 
-    const exportEntries = await Promise.all(
-      readyDepartments.departments.map(async (department) => {
-        const exportData = await getReportDepartmentExportData(params.batchId, department.dept_name);
+    type DepartmentExportOutcome = {
+      exportData: Awaited<ReturnType<typeof getReportDepartmentExportData>>;
+      entries: Array<{ filename: string; data: Buffer }>;
+    };
 
-        if (exportData.status !== "ready") {
-          return { exportData, entries: [] };
+    // Sequential on purpose: keeps peak memory bounded instead of building
+    // every department's Excel+PDF buffers concurrently (Stage 4 size guard).
+    const exportEntries: DepartmentExportOutcome[] = [];
+    for (const department of readyDepartments.departments) {
+      const exportData = await getReportDepartmentExportData(params.batchId, department.dept_name);
+
+      if (exportData.status !== "ready") {
+        exportEntries.push({ exportData, entries: [] });
+        continue;
+      }
+
+      const [excelBuffer, pdfBuffer] = await Promise.all([
+        buildReportDepartmentWorkbookBuffer(exportData),
+        buildReportDepartmentPdfBuffer(exportData).catch(() => null)
+      ]);
+
+      const entries: Array<{ filename: string; data: Buffer }> = [
+        {
+          filename: buildReportDepartmentExcelFilename(exportData),
+          data: excelBuffer
         }
+      ];
 
-        const [excelBuffer, pdfBuffer] = await Promise.all([
-          buildReportDepartmentWorkbookBuffer(exportData),
-          buildReportDepartmentPdfBuffer(exportData).catch(() => null)
-        ]);
+      if (pdfBuffer) {
+        entries.push({
+          filename: buildReportDepartmentPdfFilename(exportData),
+          data: pdfBuffer
+        });
+      }
 
-        const entries: Array<{ filename: string; data: Buffer }> = [
-          {
-            filename: buildReportDepartmentExcelFilename(exportData),
-            data: excelBuffer
-          }
-        ];
-
-        if (pdfBuffer) {
-          entries.push({
-            filename: buildReportDepartmentPdfFilename(exportData),
-            data: pdfBuffer
-          });
-        }
-
-        return {
-          exportData,
-          entries
-        };
-      })
-    );
+      exportEntries.push({ exportData, entries });
+    }
 
     const failedExport = exportEntries.find((result) => result.exportData.status !== "ready");
     if (failedExport) {
@@ -112,6 +116,23 @@ export async function GET(_request: Request, props: { params: Promise<{ batchId:
         // Fallback gracefully if summary data for exact date range is unavailable
         console.warn("Summary report PDF generation skipped:", summaryError);
       }
+    }
+
+    const totalEntryBytes = readyEntries.reduce((total, entry) => total + entry.data.byteLength, 0);
+    if (totalEntryBytes > REPORT_EXPORT_MAX_BYTES) {
+      await recordAuditEvent(
+        buildReportExportFailureAudit({
+          batchId: params.batchId,
+          format: "zip",
+          error: new Error(`export_all_size_limit_exceeded: ${totalEntryBytes} bytes`)
+        })
+      );
+      return NextResponse.json(
+        {
+          error: `ไฟล์รวมทั้งหมด (${Math.round(totalEntryBytes / 1024 / 1024)} MB) เกินขีดจำกัดการส่งออก กรุณาส่งออกรายฝ่ายแทน`
+        },
+        { status: 413 }
+      );
     }
 
     const zipBuffer = createZipBuffer(readyEntries);
