@@ -43,7 +43,7 @@ async function loadDashboardStatistics(
         ? "ticket_id, type, timestamp, last_activity, state, star, org_response, dept_list"
         : "ticket_id, type, timestamp, last_activity, state, star, org_response, dept_list, ticket_origin";
 
-      let result = await supabase
+      const result = await supabase
         .from("tickets")
         .select(selectColumns)
         .gte("timestamp", startAt)
