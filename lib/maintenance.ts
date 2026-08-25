@@ -238,6 +238,26 @@ async function cleanupBucket(
   };
 }
 
+export type AuditRetentionSummary = {
+  deletedEvents: number;
+  retentionDays: number;
+};
+
+/**
+ * Purges audit events older than the retention window (default 730 days,
+ * override with AUDIT_RETENTION_DAYS). Batched server-side to keep cron runs short.
+ */
+export async function enforceAuditLogRetention(
+  supabase: StorageClient,
+  retentionDays = Number(process.env.AUDIT_RETENTION_DAYS) || 730
+): Promise<AuditRetentionSummary> {
+  const result = await supabase.rpc("purge_old_audit_events", { p_retention_days: retentionDays });
+  if (result.error || result.data === null) {
+    throw new Error(`ล้าง audit events เกินกำหนดไม่สำเร็จ: ${result.error?.message || "ไม่พบข้อมูล"}`);
+  }
+  return { deletedEvents: Number(result.data), retentionDays };
+}
+
 export async function cleanupTemporaryStorage(supabase: StorageClient, now = new Date()) {
   await Promise.all([
     ensurePrivateBucket(supabase, IMPORT_BUCKET, {

@@ -4,6 +4,7 @@ import { isCronAuthorizationValid } from "@/lib/cron-auth";
 import { env, hasSupabaseAdminEnv } from "@/lib/env";
 import {
   cleanupTemporaryStorage,
+  enforceAuditLogRetention,
   recoverStaleImportJobs,
   reconcileStorageDeletionOutbox
 } from "@/lib/maintenance";
@@ -62,8 +63,11 @@ export async function GET(request: Request) {
     const temporaryCleanup = await runMaintenanceStage("temporary-storage-cleanup", () =>
       cleanupTemporaryStorage(supabase)
     );
+    const auditRetention = await runMaintenanceStage("audit-log-retention", () =>
+      enforceAuditLogRetention(supabase)
+    );
     const notifications = await runMaintenanceStage("operational-notifications", () => syncOperationalNotifications());
-    const degraded = [staleImports, storageDeletionOutbox, temporaryCleanup, notifications]
+    const degraded = [staleImports, storageDeletionOutbox, temporaryCleanup, auditRetention, notifications]
       .some((stage) => stage.status === "degraded");
 
     return NextResponse.json(
@@ -74,6 +78,7 @@ export async function GET(request: Request) {
           staleImports,
           storageDeletionOutbox,
           temporaryStorage: temporaryCleanup,
+          auditRetention,
           notifications
         }
       },
