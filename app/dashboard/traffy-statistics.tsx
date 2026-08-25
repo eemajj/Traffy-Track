@@ -68,7 +68,7 @@ function ExecutiveKpiCards({
       <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/50 p-5 shadow-xs transition hover:shadow-md">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">อัตราสำเร็จ (%)</span>
-          <span className="rounded-full bg-emerald-100 p-2 text-sm text-emerald-800">🟢</span>
+          <span className="rounded-full bg-emerald-100 p-2 text-sm text-emerald-800" aria-hidden="true">🟢</span>
         </div>
         <div className="mt-3 flex items-baseline gap-2">
           <p className="text-3xl font-extrabold tabular-nums text-emerald-950">
@@ -133,17 +133,18 @@ function DepartmentMatrixSection({
 
       <div className="mt-5 overflow-x-auto">
         <table className="w-full text-left text-sm border-collapse">
+          <caption className="sr-only">ตารางสรุปงานคงค้างรายฝ่ายตามสถานะ</caption>
           <thead>
             <tr className="border-b border-border bg-surface text-xs font-semibold text-muted uppercase">
-              <th className="py-3 px-4">ฝ่ายที่รับผิดชอบ</th>
-              <th className="py-3 px-3 text-center">รับเรื่อง</th>
-              <th className="py-3 px-3 text-center">กำลังดำเนินการ</th>
-              <th className="py-3 px-3 text-center">ศึกษาปัญหา</th>
-              <th className="py-3 px-3 text-center">ของบประมาณ</th>
-              <th className="py-3 px-3 text-center">ขั้นตอนกฎหมาย</th>
-              <th className="py-3 px-3 text-center">ติดตามเรื่อง</th>
-              <th className="py-3 px-4 text-right">รวมค้างปฏิบัติงาน</th>
-              <th className="py-3 px-4 text-center">การดำเนินการ</th>
+              <th scope="col" className="py-3 px-4">ฝ่ายที่รับผิดชอบ</th>
+              <th scope="col" className="py-3 px-3 text-center">รับเรื่อง</th>
+              <th scope="col" className="py-3 px-3 text-center">กำลังดำเนินการ</th>
+              <th scope="col" className="py-3 px-3 text-center">ศึกษาปัญหา</th>
+              <th scope="col" className="py-3 px-3 text-center">ของบประมาณ</th>
+              <th scope="col" className="py-3 px-3 text-center">ขั้นตอนกฎหมาย</th>
+              <th scope="col" className="py-3 px-3 text-center">ติดตามเรื่อง</th>
+              <th scope="col" className="py-3 px-4 text-right">รวมค้างปฏิบัติงาน</th>
+              <th scope="col" className="py-3 px-4 text-center">การดำเนินการ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -231,7 +232,7 @@ function SlaAgingSection({ dashboard }: { dashboard?: DashboardData }) {
     <section className="rounded-2xl border border-border bg-white p-6 shadow-xs">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
         <div>
-          <h2 className="text-xl font-bold text-ink">⏱️ การติดตามอายุเรื่องคงค้างตามเกณฑ์ SLA</h2>
+          <h2 className="text-xl font-bold text-ink"><span aria-hidden="true">⏱️</span> การติดตามอายุเรื่องคงค้างตามเกณฑ์ SLA</h2>
           <p className="mt-1 text-sm text-muted">จำแนกระยะเวลาคงค้างของเรื่องในพื้นที่ เพื่อเร่งรัดเคสที่เกินมาตรฐาน</p>
         </div>
         <Link href="/cases?sort=received-asc" className="text-xs font-semibold text-brand hover:text-brand-deep">
@@ -245,17 +246,17 @@ function SlaAgingSection({ dashboard }: { dashboard?: DashboardData }) {
           <p className="mt-1 text-xs text-emerald-700">อยู่ในระยะเวลาดำเนินการ</p>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-          <p className="text-xs font-semibold text-amber-800">🟡 เริ่มชะลอ (8 - 14 วัน)</p>
+          <p className="text-xs font-semibold text-amber-800"><span aria-hidden="true">🟡</span> เริ่มชะลอ (8 - 14 วัน)</p>
           <p className="mt-2 text-2xl font-bold text-amber-900">{formatNumber(aging.warning)}</p>
           <p className="mt-1 text-xs text-amber-700">ควรเริ่มเฝ้าระวังติดตาม</p>
         </div>
         <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4">
-          <p className="text-xs font-semibold text-orange-800">🟠 เกิน SLA (15 - 30 วัน)</p>
+          <p className="text-xs font-semibold text-orange-800"><span aria-hidden="true">🟠</span> เกิน SLA (15 - 30 วัน)</p>
           <p className="mt-2 text-2xl font-bold text-orange-900">{formatNumber(aging.overdue)}</p>
           <p className="mt-1 text-xs text-orange-700">ต้องชี้แจงสาเหตุค้างช้า</p>
         </div>
         <div className="rounded-xl border border-red-200 bg-red-50/50 p-4">
-          <p className="text-xs font-semibold text-red-800">🔴 ค้างวิกฤต (&gt; 30 วัน)</p>
+          <p className="text-xs font-semibold text-red-800"><span aria-hidden="true">🔴</span> ค้างวิกฤต (&gt; 30 วัน)</p>
           <p className="mt-2 text-2xl font-bold text-red-900">{formatNumber(aging.critical)}</p>
           <p className="mt-1 text-xs text-red-700">ต้องรายงาน ผอ.เขต ด่วน</p>
         </div>
@@ -369,7 +370,7 @@ function AnalyticsGrid({ stats }: { stats: DashboardStatisticsReady }) {
       {/* Left Column: Problem Types */}
       <div className="rounded-2xl border border-border bg-white p-6 shadow-xs">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-ink">📌 5 อันดับประเภทปัญหาที่พบมากที่สุด</h2>
+          <h2 className="text-xl font-bold text-ink"><span aria-hidden="true">📌</span> 5 อันดับประเภทปัญหาที่พบมากที่สุด</h2>
           <Link href="/analytics" className="text-xs font-semibold text-brand hover:text-brand-deep">ดูการวิเคราะห์ทั้งหมด →</Link>
         </div>
         <ol className="mt-5 space-y-4">

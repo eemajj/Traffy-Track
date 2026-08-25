@@ -4,6 +4,12 @@ export function getMapMarkerColor(state: string | null) {
   if (!state) return "#526b61";
   return "#94550b";
 }
+// Size differentiation keeps markers distinguishable without relying on color alone.
+export function getMapMarkerRadius(state: string | null) {
+  if (state === "เสร็จสิ้น" || state === "ไม่เกี่ยวข้อง" || state === "ส่งต่อ(ใหม่)") return 5;
+  if (!state) return 6;
+  return 8;
+}
 export function getMapStatusMeta(state: string | null) {
   if (state === "เสร็จสิ้น" || state === "ไม่เกี่ยวข้อง" || state === "ส่งต่อ(ใหม่)") return { label: state, className: "bg-success/10 text-success" };
   if (!state) return { label: "ไม่ระบุสถานะ", className: "bg-surface-strong text-muted" };

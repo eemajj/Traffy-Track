@@ -233,8 +233,8 @@ export default async function CasesPage(props: CasesPageProps) {
                     className="w-full min-h-11 rounded-2xl border border-border bg-white px-3 text-xs font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-[var(--ring)]"
                   >
                     <option value="">ทุกบทบาท (หลัก + เชิญร่วม)</option>
-                    <option value="primary">🏷️ เฉพาะฝ่ายหลัก</option>
-                    <option value="cohandling">👥 เฉพาะฝ่ายเชิญร่วม</option>
+                    <option value="primary">เฉพาะฝ่ายหลัก</option>
+                    <option value="cohandling">เฉพาะฝ่ายเชิญร่วม</option>
                   </select>
                 </div>
                 <div>
@@ -300,13 +300,14 @@ export default async function CasesPage(props: CasesPageProps) {
               <section className="hidden overflow-hidden rounded-2xl border border-border bg-white lg:block">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-sm">
+                  <caption className="sr-only">ตารางทะเบียนเรื่องร้องเรียน</caption>
                     <thead className="bg-surface text-xs font-semibold text-muted">
                       <tr>
-                        <th className="w-[15%] border-b border-border px-4 py-3">รหัส / สถานะ</th>
-                        <th className="w-[31%] border-b border-border px-4 py-3">รายละเอียดเรื่อง</th>
-                        <th className="w-[20%] border-b border-border px-4 py-3">ฝ่ายรับผิดชอบ</th>
-                        <th className="w-[17%] border-b border-border px-4 py-3">วันที่รับแจ้ง</th>
-                        <th className="w-[17%] border-b border-border px-4 py-3">อัปเดตล่าสุด</th>
+                        <th scope="col" className="w-[15%] border-b border-border px-4 py-3">รหัส / สถานะ</th>
+                        <th scope="col" className="w-[31%] border-b border-border px-4 py-3">รายละเอียดเรื่อง</th>
+                        <th scope="col" className="w-[20%] border-b border-border px-4 py-3">ฝ่ายรับผิดชอบ</th>
+                        <th scope="col" className="w-[17%] border-b border-border px-4 py-3">วันที่รับแจ้ง</th>
+                        <th scope="col" className="w-[17%] border-b border-border px-4 py-3">อัปเดตล่าสุด</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/70">
@@ -332,7 +333,7 @@ export default async function CasesPage(props: CasesPageProps) {
                                 </span>
                               ) : (!item.dept_list || item.dept_list.length === 0) ? (
                                 <span className="mt-1 block w-fit rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
-                                  ⚠️ ไม่พบฝ่ายในเขต
+                                  <span aria-hidden="true">⚠️</span> ไม่พบฝ่ายในเขต
                                 </span>
                               ) : null}
                             </td>
@@ -408,3 +409,7 @@ export default async function CasesPage(props: CasesPageProps) {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "ทะเบียนเรื่อง — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};

@@ -10,6 +10,7 @@ import {
   formatMapDate as formatDate,
   getMapCaseHref as getCaseHref,
   getMapMarkerColor as getMarkerColor,
+  getMapMarkerRadius as getMarkerRadius,
   getMapStatusMeta as getStatusMeta
 } from "@/lib/map/page-model";
 
@@ -175,7 +176,7 @@ export function ComplaintMap({ points, focus, returnTo }: ComplaintMapProps) {
             }).addTo(dataLayer);
           }
           const marker = L.circleMarker([point.lat, point.lng], {
-            radius: isSelected ? 10 : 7,
+            radius: isSelected ? getMarkerRadius(point.state) + 3 : getMarkerRadius(point.state),
             color: isSelected ? "var(--brand-deep)" : "var(--surface-elevated)",
             weight: isSelected ? 4 : 2,
             fillColor: getMarkerColor(point.state),

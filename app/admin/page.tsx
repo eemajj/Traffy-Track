@@ -164,13 +164,14 @@ export default async function AdminPage() {
               <div className="mt-5 overflow-hidden rounded-2xl border border-border">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <caption className="sr-only">ตารางประวัติการนำเข้าข้อมูล</caption>
                     <thead className="bg-surface text-xs font-semibold text-muted">
                       <tr>
-                        <th className="px-4 py-3">เวลา</th>
-                        <th className="px-4 py-3">ไฟล์</th>
-                        <th className="px-4 py-3">สถานะ</th>
-                        <th className="px-4 py-3 text-right">แถว</th>
-                        <th className="px-4 py-3">ข้อความ</th>
+                        <th scope="col" className="px-4 py-3">เวลา</th>
+                        <th scope="col" className="px-4 py-3">ไฟล์</th>
+                        <th scope="col" className="px-4 py-3">สถานะ</th>
+                        <th scope="col" className="px-4 py-3 text-right">แถว</th>
+                        <th scope="col" className="px-4 py-3">ข้อความ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border bg-white">
@@ -203,11 +204,12 @@ export default async function AdminPage() {
               <h2 className="text-xl font-bold text-ink">Database tables</h2>
               <div className="mt-4 overflow-hidden rounded-2xl border border-border">
                 <table className="w-full border-collapse text-left text-sm">
+                  <caption className="sr-only">ตารางสรุปจำนวนแถวในฐานข้อมูลแต่ละตาราง</caption>
                   <thead className="bg-surface text-xs font-semibold text-muted">
                     <tr>
-                      <th className="px-4 py-3">ตาราง</th>
-                      <th className="px-4 py-3 text-right">แถว</th>
-                      <th className="px-4 py-3">สถานะ</th>
+                      <th scope="col" className="px-4 py-3">ตาราง</th>
+                      <th scope="col" className="px-4 py-3 text-right">แถว</th>
+                      <th scope="col" className="px-4 py-3">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border bg-white">
@@ -265,13 +267,14 @@ export default async function AdminPage() {
               <div className="mt-5 overflow-hidden rounded-2xl border border-border">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+                    <caption className="sr-only">ตารางบันทึกเหตุการณ์ของผู้ดูแลระบบ</caption>
                     <thead className="bg-surface text-xs font-semibold text-muted">
                       <tr>
-                        <th className="px-4 py-3">เวลา</th>
-                        <th className="px-4 py-3">ผู้ดำเนินการ</th>
-                        <th className="px-4 py-3">การกระทำ</th>
-                        <th className="px-4 py-3">รายการอ้างอิง</th>
-                        <th className="px-4 py-3">ผลลัพธ์</th>
+                        <th scope="col" className="px-4 py-3">เวลา</th>
+                        <th scope="col" className="px-4 py-3">ผู้ดำเนินการ</th>
+                        <th scope="col" className="px-4 py-3">การกระทำ</th>
+                        <th scope="col" className="px-4 py-3">รายการอ้างอิง</th>
+                        <th scope="col" className="px-4 py-3">ผลลัพธ์</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border bg-white">
@@ -317,3 +320,7 @@ export default async function AdminPage() {
     </AppShell>
   );
 }
+
+export const metadata = {
+  title: "ผู้ดูแลระบบ — ระบบติดตามเรื่องร้องเรียน เขตทวีวัฒนา",
+};

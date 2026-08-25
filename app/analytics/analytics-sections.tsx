@@ -133,11 +133,12 @@ function TrendChart({ points }: { points: AnalyticsTrendPoint[] }) {
         <summary className="cursor-pointer font-semibold text-ink">ดูตัวเลขรายสัปดาห์</summary>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[420px] border-collapse text-left text-sm">
+                  <caption className="sr-only">ตารางจำนวนเรื่องร้องเรียนรายสัปดาห์</caption>
             <thead className="text-xs text-muted">
               <tr>
-                <th className="border-b border-border py-2 pr-4">สัปดาห์เริ่ม</th>
-                <th className="border-b border-border px-4 py-2 text-right">รับเข้า</th>
-                <th className="border-b border-border py-2 pl-4 text-right">ปิด</th>
+                <th scope="col" className="border-b border-border py-2 pr-4">สัปดาห์เริ่ม</th>
+                <th scope="col" className="border-b border-border px-4 py-2 text-right">รับเข้า</th>
+                <th scope="col" className="border-b border-border py-2 pl-4 text-right">ปิด</th>
               </tr>
             </thead>
             <tbody>
