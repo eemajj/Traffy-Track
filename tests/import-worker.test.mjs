@@ -90,13 +90,13 @@ test("claim release retries with backoff and stops at max attempts", async () =>
   assert.match(sql, /'reason', 'lease_lost'/);
 });
 
-test("upload request only persists a durable job and does not depend on waitUntil", async () => {
+test("upload request persists a durable job and triggers background execution", async () => {
   const source = await readFile(importRouteUrl, "utf8");
 
-  assert.doesNotMatch(source, /@vercel\/functions|waitUntil/);
   assert.match(source, /storagePath: payload\.path/);
   assert.match(source, /action: "import\.queued"/);
   assert.match(source, /status: 202/);
+  assert.match(source, /runDurableImportWorker/);
 });
 
 test("duplicate enqueue for one storage object returns the original batch", async () => {
